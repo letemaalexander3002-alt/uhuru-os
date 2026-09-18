@@ -5,6 +5,7 @@ lb config noauto \
     --distribution bookworm \
     --archive-areas "main contrib non-free non-free-firmware" \
     --architecture amd64 \
+    --linux-flavours amd64 \
     --binary-images iso-hybrid \
     --debian-installer live \
     --debian-installer-gui true \
