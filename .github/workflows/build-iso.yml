@@ -28,6 +28,7 @@ jobs:
       - name: Jenga ISO (Debian 12 + XFCE + Calamares)
         run: |
           sudo lb config
+          set -o pipefail
           sudo lb build 2>&1 | tee build.log
 
       - name: Pakia build.log (kwa uchunguzi endapo kuna hitilafu)
