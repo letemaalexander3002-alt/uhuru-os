@@ -24,6 +24,8 @@ jobs:
           git clone --depth 1 https://salsa.debian.org/live-team/live-build.git /tmp/live-build-src
           cd /tmp/live-build-src
           sudo make install
+          wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.3+deb12u2_all.deb -O /tmp/dak.deb
+          sudo dpkg -i /tmp/dak.deb
           cd "$GITHUB_WORKSPACE"
           lb --version
 
