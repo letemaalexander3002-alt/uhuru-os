@@ -4,7 +4,7 @@ name: Jenga Uhuru OS ISO
 # kutoka GitHub app/browser kwenye tab ya "Actions" -> "Run workflow".
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
