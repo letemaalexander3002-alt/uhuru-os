@@ -17,10 +17,15 @@ jobs:
       - name: Chukua Msimbo wa Mradi
         uses: actions/checkout@v4
 
-      - name: Sanikisha live-build
+      - name: Sanikisha live-build (kutoka chanzo cha Debian, siyo Ubuntu)
         run: |
           sudo apt-get update
-          sudo apt-get install -y live-build live-boot live-config
+          sudo apt-get install -y git make debootstrap live-boot live-config
+          git clone --depth 1 https://salsa.debian.org/live-team/live-build.git /tmp/live-build-src
+          cd /tmp/live-build-src
+          sudo make install
+          cd "$GITHUB_WORKSPACE"
+          lb --version
 
       - name: Ruhusu Executable kwenye auto scripts
         run: chmod +x auto/config auto/clean
