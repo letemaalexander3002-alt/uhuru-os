@@ -1,0 +1,55 @@
+name: Jenga Uhuru OS ISO
+
+# Inaanza kila unapo-push kwenye 'main', au unaweza kuianzisha mwenyewe
+# kutoka GitHub app/browser kwenye tab ya "Actions" -> "Run workflow".
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Chukua Msimbo wa Mradi
+        uses: actions/checkout@v4
+
+      - name: Sanikisha live-build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build live-boot live-config
+
+      - name: Ruhusu Executable kwenye auto scripts
+        run: chmod +x auto/config auto/clean
+
+      - name: Jenga ISO (Debian 12 + XFCE + Calamares)
+        run: |
+          sudo lb config
+          sudo lb build 2>&1 | tee build.log
+
+      - name: Pakia build.log (kwa uchunguzi endapo kuna hitilafu)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+
+      - name: Pakia ISO kama Artifact (chelezo, siku 30)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uhuru-os-iso
+          path: "*.iso"
+          retention-days: 30
+
+      - name: Tengeneza Release yenye ISO (link ya kudumu ya kupakua)
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Uhuru OS — Jaribio la Ndani #${{ github.run_number }}"
+          body: "ISO ya awamu ya 2 (bado bila branding). Jaribu kwa VirtualBox/QEMU kisha jaza QA_CHECKLIST_AWAMU2.md."
+          files: "*.iso"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,25 @@
+#!/bin/sh
+set -e
+
+# ============================================================
+# Uhuru OS — Awamu ya 2: Msingi wa Kiufundi (bado bila branding)
+# Lengo: kuthibitisha kuwa mfumo unaboot na kufanya kazi.
+# ============================================================
+
+lb config noauto \
+    --distribution bookworm \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --architecture amd64 \
+    --binary-images iso-hybrid \
+    --debian-installer live \
+    --debian-installer-gui true \
+    --iso-application "Uhuru OS - Awamu 2 (Majaribio ya Ndani)" \
+    --iso-publisher "Letema Group Tech" \
+    --iso-volume "UHURU-OS-A2" \
+    --memtest none \
+    --win32-loader false \
+    --apt-recommends true \
+    --firmware-chroot true \
+    --firmware-binary true \
+    --bootappend-live "boot=live components username=mtumiaji hostname=uhuru-os locales=sw_TZ.UTF-8 keyboard-layouts=us" \
+    "${@}"

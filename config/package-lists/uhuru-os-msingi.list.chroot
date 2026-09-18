@@ -1,0 +1,35 @@
+# ============================================================
+# Uhuru OS — Awamu ya 2: Orodha ya Programu za Msingi
+# Desktop Environment: XFCE (nyepesi, inafaa RAM ya chini)
+# ============================================================
+
+# --- Desktop Environment (XFCE) ---
+task-xfce-desktop
+xfce4-terminal
+xfce4-power-manager
+xfce4-screenshooter
+network-manager-gnome
+gvfs
+gvfs-backends
+
+# --- Calamares Installer ---
+calamares
+calamares-settings-debian
+
+# --- Vifaa vya msingi vya mfumo ---
+firmware-linux-free
+firmware-misc-nonfree
+firmware-realtek
+firmware-iwlwifi
+sudo
+ca-certificates
+curl
+locales
+
+# --- Live boot support ---
+live-boot
+live-config
+live-config-systemd
+
+# --- Programu moja tu ya kujaribu (kivinjari) ---
+firefox-esr
