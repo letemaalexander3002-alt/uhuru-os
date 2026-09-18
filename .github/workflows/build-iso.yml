@@ -27,7 +27,7 @@ jobs:
 
       - name: Jenga ISO (Debian 12 + XFCE + Calamares)
         run: |
-          sudo lb config
+          sudo ./auto/config
           set -o pipefail
           sudo lb build 2>&1 | tee build.log
 
