@@ -1,0 +1,10 @@
+PRETTY_NAME="Uhuru OS 1.0 (Development)"
+NAME="Uhuru OS"
+VERSION_ID="1.0"
+VERSION="1.0 (msingi wa Debian 12 Bookworm)"
+VERSION_CODENAME=bookworm
+ID=uhuruos
+ID_LIKE=debian
+HOME_URL="https://letemagrouptech.co.tz"
+SUPPORT_URL="https://letemagrouptech.co.tz/uhuruos/msaada"
+BUG_REPORT_URL="https://github.com/letemaalexander3002-alt/uhuru-os/issues"

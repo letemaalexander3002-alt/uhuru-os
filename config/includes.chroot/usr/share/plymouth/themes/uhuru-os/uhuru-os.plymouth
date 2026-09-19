@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Uhuru OS
+Description=Boot splash rasmi ya Uhuru OS
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/uhuru-os
+ScriptFile=/usr/share/plymouth/themes/uhuru-os/uhuru-os.script

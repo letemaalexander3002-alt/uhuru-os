@@ -1,0 +1,15 @@
+#!/bin/sh
+# Uhuru OS — Awamu ya 3: Wezesha Plymouth theme na branding
+set -e
+
+if command -v update-alternatives >/dev/null 2>&1 && [ -f /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth ]; then
+    update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
+        /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth 100
+    update-alternatives --set default.plymouth /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
+fi
+
+if command -v update-initramfs >/dev/null 2>&1; then
+    update-initramfs -u || true
+fi
+
+echo "Uhuru OS branding hook: imekamilika."

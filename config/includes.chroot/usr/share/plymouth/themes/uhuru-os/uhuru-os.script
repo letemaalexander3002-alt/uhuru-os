@@ -1,0 +1,35 @@
+// Uhuru OS — Plymouth boot splash script
+// Background ya rangi ya giza + logo katikati + mstari wa maendeleo (progress)
+
+Window.SetBackgroundTopColor(0.020, 0.024, 0.031);
+Window.SetBackgroundBottomColor(0.012, 0.015, 0.020);
+
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.x = Window.GetX() + Window.GetWidth()  / 2 - logo.image.GetWidth()  / 2;
+logo.y = Window.GetY() + Window.GetHeight() / 2 - logo.image.GetHeight() / 2;
+logo.sprite.SetPosition(logo.x, logo.y, 10);
+
+progress_bar.original_image = Image("progress_bar.png");
+progress_bar.sprite = Sprite();
+progress_bar.x = Window.GetX() + Window.GetWidth() / 2 - progress_bar.original_image.GetWidth() / 2;
+progress_bar.y = Window.GetY() + Window.GetHeight() * 0.74;
+progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 10);
+
+fun progress_callback(duration, progress)
+{
+  progress_bar.image = progress_bar.original_image.Scale(
+      progress_bar.original_image.GetWidth() * progress,
+      progress_bar.original_image.GetHeight());
+  progress_bar.sprite.SetImage(progress_bar.image);
+}
+
+Plymouth.SetBootProgressFunction(progress_callback);
+
+fun quit_callback()
+{
+  logo.sprite.SetOpacity(0);
+  progress_bar.sprite.SetOpacity(0);
+}
+
+Plymouth.SetQuitFunction(quit_callback);

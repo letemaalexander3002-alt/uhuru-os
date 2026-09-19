@@ -16,13 +16,13 @@ lb config noauto \
     --mirror-binary "http://deb.debian.org/debian" \
     --mirror-binary-security "http://security.debian.org/debian-security" \
     --keyring-packages "debian-archive-keyring" \
-    --iso-application "Uhuru OS - Awamu 2 (Majaribio ya Ndani)" \
+    --iso-application "Uhuru OS 1.0" \
     --iso-publisher "Letema Group Tech" \
-    --iso-volume "UHURU-OS-A2" \
+    --iso-volume "UHURU-OS-1-0" \
     --memtest none \
     --win32-loader false \
     --apt-recommends true \
     --firmware-chroot true \
     --firmware-binary true \
-    --bootappend-live "boot=live components username=mtumiaji hostname=uhuru-os locales=sw_TZ.UTF-8 keyboard-layouts=us" \
+    --bootappend-live "boot=live components username=mtumiaji hostname=uhuru-os locales=sw_TZ.UTF-8 keyboard-layouts=us quiet splash" \
     "${@}"
