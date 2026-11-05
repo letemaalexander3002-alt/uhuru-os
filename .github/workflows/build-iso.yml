@@ -72,11 +72,22 @@ jobs:
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
 
-      - name: Boot ISO headless (BIOS) and wait for graphical target
+      - name: Boot ISO headless (BIOS), press Enter at menu, wait for graphical target
         run: |
           timeout 900 qemu-system-x86_64 -enable-kvm -m 2048 -smp 2 \
             -cdrom live-image-amd64.hybrid.iso -boot d \
-            -display none -serial file:serial.log -no-reboot &
+            -display none -serial file:serial.log -no-reboot \
+            -monitor tcp:127.0.0.1:4444,server,nowait &
+          for i in $(seq 1 30); do
+            (exec 3<>/dev/tcp/127.0.0.1/4444) 2>/dev/null && break
+            sleep 1
+          done
+          # isolinux ina "timeout 0": inasubiri Enter milele. Bonyeza Enter kuchagua chaguo-msingi.
+          sleep 60
+          exec 3<>/dev/tcp/127.0.0.1/4444
+          echo "sendkey ret" >&3
+          sleep 2
+          exec 3>&-
           for i in $(seq 1 90); do
             if grep -q "Reached target.*Graphical" serial.log 2>/dev/null; then
               echo "Graphical target reached"; pkill qemu-system-x86_64 || true; exit 0
