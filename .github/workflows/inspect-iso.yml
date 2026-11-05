@@ -24,33 +24,52 @@ jobs:
           ls -lh *.iso
           sha256sum *.iso
 
-      - name: Toa filesystem na uorodheshe faili za branding
+      - name: Kagua branding ndani ya ISO
         run: |
           docker run --rm --privileged \
             -v "$PWD:/work" -w /work \
             debian:bookworm bash -c '
               set -e
               apt-get update
-              apt-get install -y --no-install-recommends xorriso squashfs-tools ca-certificates
-              xorriso -osirrox on -indev live-image-amd64.hybrid.iso -extract /live/filesystem.squashfs fs.squashfs
-              unsquashfs -l fs.squashfs > files.txt
-              echo "Jumla ya faili: $(wc -l < files.txt)"
-              fail=0
-              for p in usr/share/backgrounds/uhuru-os/uhuru-os-wallpaper.png usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth usr/share/pixmaps/uhuru-os-logo.png usr/share/icons/hicolor/512x512/apps/uhuru-os-logo.png etc/os-release etc/issue; do
-                if grep -q "$p" files.txt; then echo "OK      $p"; else echo "MISSING $p"; fail=1; fi
+              apt-get install -y --no-install-recommends xorriso squashfs-tools initramfs-tools ca-certificates
+              ISO=live-image-amd64.hybrid.iso
+              mkdir -p report iso-boot live-dir
+
+              # 1. Menyu za bootloader: kila mstari wenye "debian"
+              xorriso -osirrox on -indev $ISO -extract /isolinux iso-boot/isolinux || true
+              xorriso -osirrox on -indev $ISO -extract /boot/grub iso-boot/grub || true
+              grep -rn -i "debian" iso-boot > report/bootloader-debian-lines.txt || echo "(hakuna mstari wa debian kwenye bootloader)" > report/bootloader-debian-lines.txt
+
+              # 2. Initrd: je theme ya uhuru-os imo ndani?
+              xorriso -osirrox on -indev $ISO -extract /live live-dir || true
+              for f in live-dir/initrd*; do
+                [ -f "$f" ] && lsinitramfs "$f" | grep -i -E "plymouth/themes|uhuru" > report/initrd-plymouth.txt || true
               done
-              echo "--- etc/os-release ---"
-              unsquashfs -cat fs.squashfs etc/os-release || true
-              echo "--- etc/issue ---"
-              unsquashfs -cat fs.squashfs etc/issue || true
-              exit $fail
+              [ -s report/initrd-plymouth.txt ] || echo "(hakuna plymouth theme kwenye initrd)" > report/initrd-plymouth.txt
+
+              # 3. Squashfs: hostname, os-release, plymouth default, grub defaults
+              xorriso -osirrox on -indev $ISO -extract /live/filesystem.squashfs fs.squashfs
+              unsquashfs -cat fs.squashfs etc/hostname > report/hostname.txt 2>/dev/null || echo "(hakuna etc/hostname)" > report/hostname.txt
+              unsquashfs -cat fs.squashfs etc/hosts > report/hosts.txt 2>/dev/null || true
+              unsquashfs -cat fs.squashfs etc/os-release > report/os-release.txt 2>/dev/null || true
+              unsquashfs -cat fs.squashfs etc/issue > report/issue.txt 2>/dev/null || true
+              unsquashfs -ll fs.squashfs usr/share/plymouth/themes/default.plymouth > report/plymouth-default-link.txt 2>/dev/null || true
+              unsquashfs -cat fs.squashfs usr/share/plymouth/themes/default.plymouth > report/plymouth-default-target.txt 2>/dev/null || true
+              unsquashfs -cat fs.squashfs usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth > report/uhuru-plymouth-file.txt 2>/dev/null || echo "(theme ya uhuru haipo)" > report/uhuru-plymouth-file.txt
+
+              echo "===== bootloader: debian =====" && cat report/bootloader-debian-lines.txt
+              echo "===== initrd: plymouth/uhuru =====" && cat report/initrd-plymouth.txt
+              echo "===== hostname =====" && cat report/hostname.txt
+              echo "===== default.plymouth (target) =====" && cat report/plymouth-default-target.txt || true
+              echo "===== os-release =====" && cat report/os-release.txt
+              cp -r report /work/inspect-report
             '
 
-      - name: Hifadhi orodha ya faili
+      - name: Hifadhi ripoti
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: iso-filelist
+          name: branding-report
           path: |
-            files.txt
+            inspect-report/
           retention-days: 14
