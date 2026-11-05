@@ -1,3 +1,2 @@
 #!/bin/sh
-set -e
-lb clean --purge
+lb clean noauto --purge "${@}"
