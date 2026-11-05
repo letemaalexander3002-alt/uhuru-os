@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Pakua ISO kutoka release
         run: |
-          gh release download "${{ inputs.tag }}" -p "*.iso" -D "$PWD" --clobber
+          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" -p "*.iso" -D "$PWD" --clobber
           ls -lh *.iso
           sha256sum *.iso
 
