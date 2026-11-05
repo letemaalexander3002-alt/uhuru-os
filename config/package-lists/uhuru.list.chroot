@@ -1,0 +1,41 @@
+# Desktop: XFCE (MH-2)
+xfce4
+xfce4-session
+xfce4-panel
+xfce4-terminal
+xfce4-power-manager
+thunar
+lightdm
+lightdm-gtk-greeter
+
+# Mtandao na madereva (MH-4: WiFi, graphics, printa)
+network-manager
+network-manager-gnome
+firmware-linux
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-misc-nonfree
+xserver-xorg-video-all
+cups
+printer-driver-all
+
+# Sauti
+pipewire
+pipewire-pulse
+wireplumber
+
+# Programu za msingi (MH-11)
+firefox-esr
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+
+# Installer (Calamares) — tafsiri ya Kiswahili itakuja Awamu ya 3/4
+calamares
+calamares-settings-debian
+
+# Mfumo
+sudo
+locales

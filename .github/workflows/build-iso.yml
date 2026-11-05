@@ -1,65 +1,87 @@
-name: Jenga Uhuru OS ISO
+name: Build Uhuru OS ISO
 
-# Inaanza kila unapo-push kwenye 'main', au unaweza kuianzisha mwenyewe
-# kutoka GitHub app/browser kwenye tab ya "Actions" -> "Run workflow".
 on:
   push:
-    branches: [ master ]
+    branches: [main]
+    paths: ['auto/**', 'config/**', '.github/workflows/build-iso.yml']
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
-      - name: Chukua Msimbo wa Mradi
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Sanikisha live-build (kutoka chanzo cha Debian, siyo Ubuntu)
+      - name: Free up disk space on runner
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git make gettext po4a debootstrap debian-archive-keyring live-boot live-config
-          git clone --depth 1 https://salsa.debian.org/live-team/live-build.git /tmp/live-build-src
-          cd /tmp/live-build-src
-          sudo make install
-          wget -q http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2023.3+deb12u2_all.deb -O /tmp/dak.deb
-          sudo dpkg -i /tmp/dak.deb
-          cd "$GITHUB_WORKSPACE"
-          lb --version
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
 
-      - name: Ruhusu Executable kwenye auto scripts
-        run: chmod +x auto/config auto/clean
-
-      - name: Jenga ISO (Debian 12 + XFCE + Calamares)
+      - name: Build ISO inside Debian bookworm container
         run: |
-          sudo ./auto/config
-          set -o pipefail
-          sudo lb build 2>&1 | tee build.log
+          docker run --rm --privileged \
+            -v "$PWD:/work" -w /work \
+            debian:bookworm bash -c '
+              set -e
+              apt-get update
+              apt-get install -y --no-install-recommends live-build debootstrap ca-certificates
+              ./auto/clean || true
+              ./auto/config
+              ./auto/build
+              ls -lh *.iso
+            '
 
-      - name: Pakia build.log (kwa uchunguzi endapo kuna hitilafu)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+      - name: Checksum
+        run: sha256sum live-image-amd64.hybrid.iso | tee live-image-amd64.hybrid.iso.sha256
 
-      - name: Pakia ISO kama Artifact (chelezo, siku 30)
-        if: success()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: uhuru-os-iso
-          path: "*.iso"
-          retention-days: 30
+          path: |
+            live-image-amd64.hybrid.iso
+            live-image-amd64.hybrid.iso.sha256
+            build.log
+          retention-days: 14
 
-      - name: Tengeneza Release yenye ISO (link ya kudumu ya kupakua)
-        if: success()
-        uses: softprops/action-gh-release@v2
+  boot-test:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          tag_name: build-${{ github.run_number }}
-          name: "Uhuru OS — Jaribio la Ndani #${{ github.run_number }}"
-          body: "ISO ya awamu ya 2 (bado bila branding). Jaribu kwa VirtualBox/QEMU kisha jaza QA_CHECKLIST_AWAMU2.md."
-          files: "*.iso"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: uhuru-os-iso
+
+      - name: Verify checksum
+        run: sha256sum -c live-image-amd64.hybrid.iso.sha256
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
+
+      - name: Boot ISO headless (BIOS) and wait for graphical target
+        run: |
+          timeout 900 qemu-system-x86_64 -enable-kvm -m 2048 -smp 2 \
+            -cdrom live-image-amd64.hybrid.iso -boot d \
+            -display none -serial file:serial.log -no-reboot &
+          for i in $(seq 1 90); do
+            if grep -q "Reached target.*Graphical" serial.log 2>/dev/null; then
+              echo "Graphical target reached"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Graphical target not reached within 15 minutes"
+          tail -n 80 serial.log || true
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-serial-log
+          path: serial.log
+          retention-days: 14

@@ -1,28 +1,22 @@
 #!/bin/sh
+# Uhuru OS — Awamu ya 2: msingi wa Debian 12 (bookworm) + XFCE + Calamares
+# Hakuna branding hapa (branding ni Awamu ya 3).
 set -e
 
 lb config noauto \
-    --distribution bookworm \
-    --archive-areas "main contrib non-free non-free-firmware" \
-    --architecture amd64 \
-    --linux-flavours amd64 \
-    --linux-packages "linux-image" \
-    --binary-images iso-hybrid \
-    --debian-installer live \
-    --debian-installer-gui true \
-    --mirror-bootstrap "http://deb.debian.org/debian" \
-    --mirror-chroot "http://deb.debian.org/debian" \
-    --mirror-chroot-security "http://security.debian.org/debian-security" \
-    --mirror-binary "http://deb.debian.org/debian" \
-    --mirror-binary-security "http://security.debian.org/debian-security" \
-    --keyring-packages "debian-archive-keyring" \
-    --iso-application "Uhuru OS 1.0" \
-    --iso-publisher "Letema Group Tech" \
-    --iso-volume "UHURU-OS-1-0" \
-    --memtest none \
-    --win32-loader false \
-    --apt-recommends true \
-    --firmware-chroot true \
-    --firmware-binary true \
-    --bootappend-live "boot=live components username=mtumiaji hostname=uhuru-os locales=sw_TZ.UTF-8 keyboard-layouts=us quiet splash" \
-    "${@}"
+  --mode debian \
+  --distribution bookworm \
+  --archive-areas "main contrib non-free non-free-firmware" \
+  --architectures amd64 \
+  --linux-flavours amd64 \
+  --binary-images iso-hybrid \
+  --bootloaders "syslinux,grub-efi" \
+  --debian-installer none \
+  --firmware-binary true \
+  --firmware-chroot true \
+  --apt-recommends false \
+  --memtest none \
+  --iso-application "Uhuru OS" \
+  --iso-publisher "Letema Group Tech" \
+  --iso-volume "UHURU_OS" \
+  "${@}"
