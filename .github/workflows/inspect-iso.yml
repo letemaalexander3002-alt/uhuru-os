@@ -1,0 +1,56 @@
+name: Inspect Uhuru OS ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag ya ISO ya kukagua"
+        required: true
+        default: "build-15"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Pakua ISO kutoka release
+        run: |
+          gh release download "${{ inputs.tag }}" -p "*.iso" -D "$PWD" --clobber
+          ls -lh *.iso
+          sha256sum *.iso
+
+      - name: Toa filesystem na uorodheshe faili za branding
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD:/work" -w /work \
+            debian:bookworm bash -c '
+              set -e
+              apt-get update
+              apt-get install -y --no-install-recommends xorriso squashfs-tools ca-certificates
+              xorriso -osirrox on -indev live-image-amd64.hybrid.iso -extract /live/filesystem.squashfs fs.squashfs
+              unsquashfs -l fs.squashfs > files.txt
+              echo "Jumla ya faili: $(wc -l < files.txt)"
+              fail=0
+              for p in usr/share/backgrounds/uhuru-os/uhuru-os-wallpaper.png usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth usr/share/pixmaps/uhuru-os-logo.png usr/share/icons/hicolor/512x512/apps/uhuru-os-logo.png etc/os-release etc/issue; do
+                if grep -q "$p" files.txt; then echo "OK      $p"; else echo "MISSING $p"; fail=1; fi
+              done
+              echo "--- etc/os-release ---"
+              unsquashfs -cat fs.squashfs etc/os-release || true
+              echo "--- etc/issue ---"
+              unsquashfs -cat fs.squashfs etc/issue || true
+              exit $fail
+            '
+
+      - name: Hifadhi orodha ya faili
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iso-filelist
+          path: |
+            files.txt
+          retention-days: 14
