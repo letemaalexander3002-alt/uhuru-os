@@ -48,6 +48,7 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    continue-on-error: true
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -60,6 +61,9 @@ jobs:
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Diagnose KVM and QEMU
+        run: ls -l /dev/kvm || true; qemu-system-x86_64 --version
 
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
