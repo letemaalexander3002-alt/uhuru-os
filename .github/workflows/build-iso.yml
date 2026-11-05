@@ -2,7 +2,7 @@ name: Build Uhuru OS ISO
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
     paths: ['auto/**', 'config/**', '.github/workflows/build-iso.yml']
   workflow_dispatch:
 
@@ -25,15 +25,22 @@ jobs:
             debian:bookworm bash -c '
               set -e
               apt-get update
-              apt-get install -y --no-install-recommends live-build debootstrap ca-certificates
+              apt-get install -y --no-install-recommends live-build debootstrap xorriso ca-certificates
               ./auto/clean || true
               ./auto/config
               ./auto/build
               ls -lh *.iso
+              mkdir -p iso-boot-config
+              xorriso -osirrox on -indev live-image-amd64.hybrid.iso -extract /isolinux iso-boot-config/isolinux || true
+              xorriso -osirrox on -indev live-image-amd64.hybrid.iso -extract /boot/grub iso-boot-config/grub || true
+              grep -rn -e timeout -e serial -e append -e console iso-boot-config > iso-boot-config.txt || true
             '
 
       - name: Checksum
         run: sha256sum live-image-amd64.hybrid.iso | tee live-image-amd64.hybrid.iso.sha256
+
+      - name: Show boot configuration from the ISO
+        run: cat iso-boot-config.txt || echo "no boot config lines found"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -42,13 +49,13 @@ jobs:
             live-image-amd64.hybrid.iso
             live-image-amd64.hybrid.iso.sha256
             build.log
+            iso-boot-config.txt
           retention-days: 14
 
   boot-test:
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -62,9 +69,6 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
-      - name: Diagnose KVM and QEMU
-        run: ls -l /dev/kvm || true; qemu-system-x86_64 --version
-
       - name: Install QEMU
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
 
@@ -75,12 +79,14 @@ jobs:
             -display none -serial file:serial.log -no-reboot &
           for i in $(seq 1 90); do
             if grep -q "Reached target.*Graphical" serial.log 2>/dev/null; then
-              echo "Graphical target reached"; exit 0
+              echo "Graphical target reached"; pkill qemu-system-x86_64 || true; exit 0
             fi
             sleep 10
           done
           echo "::error::Graphical target not reached within 15 minutes"
+          echo "--- serial.log size:"; wc -c serial.log || true
           tail -n 80 serial.log || true
+          pkill qemu-system-x86_64 || true
           exit 1
 
       - uses: actions/upload-artifact@v4
