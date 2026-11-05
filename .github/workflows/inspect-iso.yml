@@ -3,10 +3,10 @@ name: Inspect Uhuru OS ISO
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag ya ISO ya kukagua"
+      run_id:
+        description: "ID ya run ya build ambayo ISO yake ikaguliwe"
         required: true
-        default: "build-15"
+        default: "42067523182"
 
 permissions:
   contents: read
@@ -20,9 +20,9 @@ jobs:
     steps:
       - name: Pakua ISO kutoka release
         run: |
-          gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" -p "*.iso" -D "$PWD" --clobber
-          ls -lh *.iso
-          sha256sum *.iso
+          gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -n uhuru-os-iso -D "$PWD"
+          ls -lh
+          sha256sum live-image-amd64.hybrid.iso
 
       - name: Kagua branding ndani ya ISO
         run: |
