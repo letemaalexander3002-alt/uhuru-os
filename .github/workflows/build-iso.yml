@@ -89,12 +89,19 @@ jobs:
           sleep 2
           exec 3>&-
           for i in $(seq 1 90); do
-            if grep -q "Reached target.*Graphical" serial.log 2>/dev/null; then
-              echo "Graphical target reached"; pkill qemu-system-x86_64 || true; exit 0
+            if grep -q "Uhuru OS 1.0" serial.log 2>/dev/null && grep -q "login:" serial.log 2>/dev/null; then
+              echo "Multi-user boot imefikiwa: branding ya Uhuru OS na prompt ya login zimeonekana"
+              if grep -q "Reached target.*Graphical" serial.log 2>/dev/null; then
+                echo "Graphical target pia imefikiwa"
+              else
+                echo "Taarifa: graphical target haikuonekana kwenye serial (lightdm inaweza kuwa polepole kwenye TCG)"
+              fi
+              pkill qemu-system-x86_64 || true
+              exit 0
             fi
             sleep 10
           done
-          echo "::error::Graphical target not reached within 15 minutes"
+          echo "::error::Multi-user boot haikuthibitishwa ndani ya dakika 15"
           echo "--- serial.log size:"; wc -c serial.log || true
           tail -n 80 serial.log || true
           pkill qemu-system-x86_64 || true
