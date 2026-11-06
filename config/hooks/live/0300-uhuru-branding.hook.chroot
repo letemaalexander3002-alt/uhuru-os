@@ -1,9 +1,10 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: weka theme ya Plymouth ya Uhuru kama chaguo-msingi na usasishe initramfs
+# Uhuru OS — Awamu ya 3: branding kamili, bila maandishi ya Debian yanayoonekana kwa mtumiaji
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
 
+# 1. Plymouth: weka theme ya Uhuru kama chaguo-msingi na usasishe initramfs
 if [ -f "$THEME" ]; then
     if command -v plymouth-set-default-theme >/dev/null 2>&1; then
         plymouth-set-default-theme uhuru-os
@@ -11,12 +12,31 @@ if [ -f "$THEME" ]; then
         update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$THEME" 100
         update-alternatives --set default.plymouth "$THEME"
     fi
-    if command -v update-initramfs >/dev/null 2>&1; then
-        update-initramfs -u
-    fi
+    command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u
 else
     echo "WARNING: theme ya uhuru-os haipo: $THEME" >&2
 fi
 
+# 2. Hostname ya mfumo
+echo "uhuru-os" > /etc/hostname
+if grep -q "127.0.1.1" /etc/hosts 2>/dev/null; then
+    sed -i 's/^127\.0\.1\.1.*/127.0.1.1\tuhuru-os/' /etc/hosts
+else
+    echo "127.0.1.1	uhuru-os" >> /etc/hosts
+fi
+
+# 3. Hostname chaguo-msingi ya live-config (inaandika "debian")
+if [ -f /usr/lib/live/config/0020-hostname ]; then
+    sed -i 's/debian/uhuru-os/g' /usr/lib/live/config/0020-hostname
+fi
+
+# 4. Icon ya "Install Debian" na programu za Debian kwenye menyu
+rm -f /usr/share/applications/install-debian.desktop
+rm -f /usr/share/xfce4/helpers/debian-sensible-browser.desktop
+rm -f /usr/share/xfce4/helpers/debian-x-terminal-emulator.desktop
+
+# 5. Theme ya GRUB ya Debian
+rm -f /etc/grub.d/05_debian_theme
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook: imekamilika."
+echo "Uhuru OS branding hook (v3): imekamilika."
