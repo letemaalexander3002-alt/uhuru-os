@@ -3,8 +3,9 @@
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
+LOGO=/usr/share/icons/hicolor/512x512/apps/uhuru-os-logo.png
 
-# 1. Plymouth: weka theme ya Uhuru kama chaguo-msingi na usasishe initramfs
+# 1. Plymouth: theme ya Uhuru kama chaguo-msingi, kisha usasishe initramfs
 if [ -f "$THEME" ]; then
     if command -v plymouth-set-default-theme >/dev/null 2>&1; then
         plymouth-set-default-theme uhuru-os
@@ -19,24 +20,45 @@ fi
 
 # 2. Hostname ya mfumo
 echo "uhuru-os" > /etc/hostname
-if grep -q "127.0.1.1" /etc/hosts 2>/dev/null; then
+if grep -q "^127\.0\.1\.1" /etc/hosts 2>/dev/null; then
     sed -i 's/^127\.0\.1\.1.*/127.0.1.1\tuhuru-os/' /etc/hosts
 else
-    echo "127.0.1.1	uhuru-os" >> /etc/hosts
+    printf '127.0.1.1\tuhuru-os\n' >> /etc/hosts
 fi
 
-# 3. Hostname chaguo-msingi ya live-config (inaandika "debian")
+# 3. Hostname chaguo-msingi ya live-config
 if [ -f /usr/lib/live/config/0020-hostname ]; then
     sed -i 's/debian/uhuru-os/g' /usr/lib/live/config/0020-hostname
 fi
 
-# 4. Icon ya "Install Debian" na programu za Debian kwenye menyu
+# 4. Launchers na programu za Debian kwenye menyu na desktop
 rm -f /usr/share/applications/install-debian.desktop
 rm -f /usr/share/xfce4/helpers/debian-sensible-browser.desktop
 rm -f /usr/share/xfce4/helpers/debian-x-terminal-emulator.desktop
 
-# 5. Theme ya GRUB ya Debian
+# 5. Icons za emblem-debian (nembo ya Debian)
+find /usr/share/icons -name 'emblem-debian*' -exec rm -f {} + 2>/dev/null || true
+
+# 6. Theme ya GRUB ya Debian
 rm -f /etc/grub.d/05_debian_theme
 
+# 7. Branding ya Calamares: nakili folda ya debian kuwa uhuru, badilisha maandishi na nembo
+CAL_SRC=/etc/calamares/branding/debian
+CAL_DST=/etc/calamares/branding/uhuru
+if [ -d "$CAL_SRC" ]; then
+    rm -rf "$CAL_DST"
+    cp -r "$CAL_SRC" "$CAL_DST"
+    find "$CAL_DST" -type f \( -name '*.desc' -o -name '*.qml' -o -name '*.conf' \) \
+        -exec sed -i 's/Debian/Uhuru OS/g; s/debian/uhuru/g' {} +
+    if [ -f "$LOGO" ]; then
+        for img in "$CAL_DST"/*.png; do
+            [ -f "$img" ] && cp "$LOGO" "$img" || true
+        done
+    fi
+    if [ -f /etc/calamares/settings.conf ]; then
+        sed -i 's/^\(\s*branding:\s*\)debian\s*$/\1uhuru/' /etc/calamares/settings.conf
+    fi
+fi
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v3): imekamilika."
+echo "Uhuru OS branding hook (v4): imekamilika."
