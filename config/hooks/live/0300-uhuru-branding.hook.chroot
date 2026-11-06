@@ -42,23 +42,21 @@ find /usr/share/icons -name 'emblem-debian*' -exec rm -f {} + 2>/dev/null || tru
 # 6. Theme ya GRUB ya Debian
 rm -f /etc/grub.d/05_debian_theme
 
-# 7. Branding ya Calamares: nakili folda ya debian kuwa uhuru, badilisha maandishi na nembo
-CAL_SRC=/etc/calamares/branding/debian
-CAL_DST=/etc/calamares/branding/uhuru
-if [ -d "$CAL_SRC" ]; then
-    rm -rf "$CAL_DST"
-    cp -r "$CAL_SRC" "$CAL_DST"
-    find "$CAL_DST" -type f \( -name '*.desc' -o -name '*.qml' -o -name '*.conf' \) \
-        -exec sed -i 's/Debian/Uhuru OS/g; s/debian/uhuru/g' {} +
+# 7. Branding ya Calamares: badilisha maandishi yanayoonekana ndani ya folda ile ile.
+#    Jina la folda na componentName hubaki "debian" kwa sababu Calamares huzitumia kutafuta branding.
+CAL=/etc/calamares/branding/debian
+if [ -d "$CAL" ]; then
+    find "$CAL" -type f \( -name '*.desc' -o -name '*.qml' \) -exec sed -i \
+        -e 's/Debian GNU\/Linux/Uhuru OS/g' \
+        -e 's/Debian 12/Uhuru OS 1.0/g' \
+        -e 's/Debian/Uhuru OS/g' {} +
     if [ -f "$LOGO" ]; then
-        for img in "$CAL_DST"/*.png; do
+        for img in "$CAL"/*.png; do
             [ -f "$img" ] && cp "$LOGO" "$img" || true
         done
-    fi
-    if [ -f /etc/calamares/settings.conf ]; then
-        sed -i 's/^\(\s*branding:\s*\)debian\s*$/\1uhuru/' /etc/calamares/settings.conf
     fi
 fi
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v4): imekamilika."
+ls -l /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo "default.plymouth: haipo kama faili"
+echo "Uhuru OS branding hook (v5): imekamilika."
