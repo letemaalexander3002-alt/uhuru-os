@@ -1,15 +1,22 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: Wezesha Plymouth theme na branding
+# Uhuru OS — Awamu ya 3: weka theme ya Plymouth ya Uhuru kama chaguo-msingi na usasishe initramfs
 set -e
 
-if command -v update-alternatives >/dev/null 2>&1 && [ -f /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth ]; then
-    update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth \
-        /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth 100
-    update-alternatives --set default.plymouth /usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
+THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
+
+if [ -f "$THEME" ]; then
+    if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+        plymouth-set-default-theme uhuru-os
+    elif command -v update-alternatives >/dev/null 2>&1; then
+        update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$THEME" 100
+        update-alternatives --set default.plymouth "$THEME"
+    fi
+    if command -v update-initramfs >/dev/null 2>&1; then
+        update-initramfs -u
+    fi
+else
+    echo "WARNING: theme ya uhuru-os haipo: $THEME" >&2
 fi
 
-if command -v update-initramfs >/dev/null 2>&1; then
-    update-initramfs -u || true
-fi
-
+echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
 echo "Uhuru OS branding hook: imekamilika."
