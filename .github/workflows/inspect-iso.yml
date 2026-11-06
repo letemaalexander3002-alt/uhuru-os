@@ -6,7 +6,7 @@ on:
       run_id:
         description: "ID ya run ya build ambayo ISO yake ikaguliwe"
         required: true
-        default: "42067523182"
+        default: "42164938978"
 
 permissions:
   contents: read
@@ -14,17 +14,17 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Pakua ISO kutoka release
+      - name: Pakua artifact ya ISO kutoka run
         run: |
           gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -n uhuru-os-iso -D "$PWD"
           ls -lh
           sha256sum live-image-amd64.hybrid.iso
 
-      - name: Kagua branding ndani ya ISO
+      - name: Kagua branding yote ndani ya ISO
         run: |
           docker run --rm --privileged \
             -v "$PWD:/work" -w /work \
@@ -35,41 +35,62 @@ jobs:
               ISO=live-image-amd64.hybrid.iso
               mkdir -p report iso-boot live-dir
 
-              # 1. Menyu za bootloader: kila mstari wenye "debian"
+              # 1. Bootloader: maandishi yenye "debian"
               xorriso -osirrox on -indev $ISO -extract /isolinux iso-boot/isolinux || true
               xorriso -osirrox on -indev $ISO -extract /boot/grub iso-boot/grub || true
-              grep -rn -i "debian" iso-boot > report/bootloader-debian-lines.txt || echo "(hakuna mstari wa debian kwenye bootloader)" > report/bootloader-debian-lines.txt
+              grep -rIn -i "debian" iso-boot > report/1-bootloader-debian.txt || echo "(hakuna)" > report/1-bootloader-debian.txt
 
-              # 2. Initrd: je theme ya uhuru-os imo ndani?
+              # 2. Initrd: theme ya uhuru-os ndani?
               xorriso -osirrox on -indev $ISO -extract /live live-dir || true
               for f in live-dir/initrd*; do
-                [ -f "$f" ] && lsinitramfs "$f" | grep -i -E "plymouth/themes|uhuru" > report/initrd-plymouth.txt || true
+                [ -f "$f" ] && lsinitramfs "$f" | grep -i -E "plymouth/themes/(uhuru|emerald|text)|plymouth.plymouth|default.plymouth" >> report/2-initrd-plymouth.txt || true
               done
-              [ -s report/initrd-plymouth.txt ] || echo "(hakuna plymouth theme kwenye initrd)" > report/initrd-plymouth.txt
+              [ -s report/2-initrd-plymouth.txt ] || echo "(hakuna plymouth kwenye initrd)" > report/2-initrd-plymouth.txt
 
-              # 3. Squashfs: hostname, os-release, plymouth default, grub defaults
+              # 3. Squashfs kamili: toa kila kitu
               xorriso -osirrox on -indev $ISO -extract /live/filesystem.squashfs fs.squashfs
-              unsquashfs -cat fs.squashfs etc/hostname > report/hostname.txt 2>/dev/null || echo "(hakuna etc/hostname)" > report/hostname.txt
-              unsquashfs -cat fs.squashfs etc/hosts > report/hosts.txt 2>/dev/null || true
-              unsquashfs -cat fs.squashfs etc/os-release > report/os-release.txt 2>/dev/null || true
-              unsquashfs -cat fs.squashfs etc/issue > report/issue.txt 2>/dev/null || true
-              unsquashfs -ll fs.squashfs usr/share/plymouth/themes/default.plymouth > report/plymouth-default-link.txt 2>/dev/null || true
-              unsquashfs -cat fs.squashfs usr/share/plymouth/themes/default.plymouth > report/plymouth-default-target.txt 2>/dev/null || true
-              unsquashfs -cat fs.squashfs usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth > report/uhuru-plymouth-file.txt 2>/dev/null || echo "(theme ya uhuru haipo)" > report/uhuru-plymouth-file.txt
+              unsquashfs -d root fs.squashfs > /dev/null
 
-              echo "===== bootloader: debian =====" && cat report/bootloader-debian-lines.txt
-              echo "===== initrd: plymouth/uhuru =====" && cat report/initrd-plymouth.txt
-              echo "===== hostname =====" && cat report/hostname.txt
-              echo "===== default.plymouth (target) =====" && cat report/plymouth-default-target.txt || true
-              echo "===== os-release =====" && cat report/os-release.txt
-              cp -r report /work/inspect-report
+              # 3a. Default ya Plymouth
+              readlink -f root/usr/share/plymouth/themes/default.plymouth > report/3a-plymouth-default.txt 2>/dev/null || echo "(default.plymouth haipo)" > report/3a-plymouth-default.txt
+              cat root/etc/alternatives/default.plymouth 2>/dev/null >> report/3a-plymouth-default.txt || true
+
+              # 3b. Maandishi yote ya "debian" yanayoonekana kwa mtumiaji (faili za maandishi tu)
+              grep -rIl -i "debian" \
+                root/etc root/home root/root root/usr/share/applications root/usr/share/desktop-directories \
+                root/usr/share/xfce4 root/usr/share/backgrounds root/usr/share/images root/usr/share/icons \
+                root/usr/share/plymouth root/usr/share/lightdm root/usr/share/pixmaps root/usr/lib/live \
+                root/usr/share/calamares root/usr/share/doc-base root/usr/share/glib-2.0 root/usr/share/themes \
+                2>/dev/null | sort > report/3b-leak-files.txt || true
+              : > report/3c-leak-lines.txt
+              while read -r f; do
+                grep -In -i "debian" "$f" | sed "s|^|$f:|" | head -n 5 >> report/3c-leak-lines.txt || true
+              done < report/3b-leak-files.txt
+
+              # 3d. Majina ya mtumiaji na desktop
+              unsquashfs -cat fs.squashfs etc/passwd > report/3d-passwd.txt 2>/dev/null || true
+              unsquashfs -cat fs.squashfs usr/lib/live/config/0030-user-setup > report/3d-live-user-setup.txt 2>/dev/null || true
+              grep -rIn -i "fullname\|Debian Live" root/usr/lib/live root/etc/passwd 2>/dev/null > report/3d-fullname.txt || echo "(hakuna)" > report/3d-fullname.txt
+
+              # 3e. Hostname na os-release
+              cat root/etc/hostname > report/3e-hostname.txt 2>/dev/null || echo "(hakuna etc/hostname)" > report/3e-hostname.txt
+              cat root/etc/os-release > report/3e-os-release.txt 2>/dev/null || true
+
+              echo "===== 1. bootloader debian ====="; cat report/1-bootloader-debian.txt
+              echo "===== 2. initrd plymouth ====="; cat report/2-initrd-plymouth.txt
+              echo "===== 3a. plymouth default ====="; cat report/3a-plymouth-default.txt
+              echo "===== 3b. mafaili yenye debian ====="; cat report/3b-leak-files.txt
+              echo "===== 3c. mistari yenye debian ====="; cat report/3c-leak-lines.txt | head -n 200
+              echo "===== 3d. fullname ====="; cat report/3d-fullname.txt
+              echo "===== 3e. hostname ====="; cat report/3e-hostname.txt
+              echo "===== 3e. os-release ====="; cat report/3e-os-release.txt
             '
 
-      - name: Hifadhi ripoti
+      - name: Hifadhi ripoti kamili
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: branding-report
           path: |
-            inspect-report/
+            report/
           retention-days: 14
