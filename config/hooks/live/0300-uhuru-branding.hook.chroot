@@ -18,6 +18,11 @@ else
     echo "WARNING: theme ya uhuru-os haipo: $THEME" >&2
 fi
 
+# 1b. Hakikisha default.plymouth inaelekeza kwenye theme ya Uhuru
+if [ -f "$THEME" ]; then
+    ln -sf "$THEME" /usr/share/plymouth/themes/default.plymouth
+fi
+
 # 2. Hostname ya mfumo
 echo "uhuru-os" > /etc/hostname
 if grep -q "^127\.0\.1\.1" /etc/hosts 2>/dev/null; then
@@ -50,6 +55,9 @@ if [ -d "$CAL" ]; then
         -e 's/Debian GNU\/Linux/Uhuru OS/g' \
         -e 's/Debian 12/Uhuru OS 1.0/g' \
         -e 's/Debian/Uhuru OS/g' {} +
+    # URL za installer: elekeza kwenye tovuti na msaada wa Uhuru OS
+    find "$CAL" -type f \( -name '*.desc' -o -name '*.qml' \) -exec sed -i \
+        -e 's#https\?://[A-Za-z.]*debian\.org[^ "<]*#https://letemagrouptech.co.tz/uhuruos#g' {} +
     if [ -f "$LOGO" ]; then
         for img in "$CAL"/*.png; do
             [ -f "$img" ] && cp "$LOGO" "$img" || true
@@ -59,4 +67,4 @@ fi
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
 ls -l /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo "default.plymouth: haipo kama faili"
-echo "Uhuru OS branding hook (v5): imekamilika."
+echo "Uhuru OS branding hook (v6): imekamilika."
