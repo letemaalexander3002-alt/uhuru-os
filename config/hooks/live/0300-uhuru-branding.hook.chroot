@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v8)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v9)
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -74,5 +74,10 @@ done
 find /usr/share/applications /usr/share/xfce4 -name '*.desktop' -exec sed -i \
     '/^\(Name\|GenericName\|Comment\)/s/Debian/Uhuru OS/g' {} + 2>/dev/null || true
 
+# 10. Jina la muuzaji kwenye xfce4 (dirisha la About)
+if [ -f /usr/share/xfce4/vendorinfo ]; then
+    sed -i 's/Debian/Uhuru OS/g' /usr/share/xfce4/vendorinfo
+fi
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v8): imekamilika."
+echo "Uhuru OS branding hook (v9): imekamilika."

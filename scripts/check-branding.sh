@@ -57,8 +57,8 @@ CN=$(grep -h "Debian" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
 if [ "$CN" -eq 0 ]; then ok calamares_maandishi "hakuna"; else bad calamares_maandishi "mistari=$CN"; fi
 
 # 9. Calamares: URL za debian.org
-CU=$(grep -l "debian.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
-CUF=$(grep -l "debian.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | xargs -r -n1 basename | tr "\n" " ")
+CU=$(grep -hE "https?://[^ \"<]*debian\.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
+CUF=$(grep -lE "https?://[^ \"<]*debian\.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | xargs -r -n1 basename | tr "\n" " ")
 if [ "$CU" -eq 0 ]; then ok calamares_url "hakuna debian.org"; else bad calamares_url "$CUF"; fi
 
 # 10. Launchers za desktop
@@ -82,7 +82,7 @@ if [ -f "$R/etc/grub.d/05_debian_theme" ]; then bad grub_theme_debian "bado ipo"
 
 # 15. Jina kamili la mtumiaji wa live (maoni hayahesabiwi)
 FN=$(grep -rn "Debian Live" "$R/usr/lib/live" 2>/dev/null | grep -v ":[[:space:]]*#" | wc -l)
-FNF=$(grep -rln "Debian Live" "$R/usr/lib/live" 2>/dev/null | xargs -r -n1 basename | tr "\n" " ")
+FNF=$(grep -rn "Debian Live" "$R/usr/lib/live" 2>/dev/null | grep -v ":[[:space:]]*#" | sed "s#$R/usr/lib/live/##" | cut -c1-120 | tr "\n" "|")
 if [ "$FN" -eq 0 ]; then ok live_fullname "hakuna"; else bad live_fullname "$FNF"; fi
 
 # 16. Maandishi ya Debian kwenye xfce4, backgrounds, applications
