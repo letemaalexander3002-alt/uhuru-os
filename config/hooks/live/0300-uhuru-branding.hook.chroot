@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v9)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v10)
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -79,5 +79,18 @@ if [ -f /usr/share/xfce4/vendorinfo ]; then
     sed -i 's/Debian/Uhuru OS/g' /usr/share/xfce4/vendorinfo
 fi
 
+# 11. Jina la mtumiaji wa live na ujumbe wa live-boot: lengo la moja kwa moja
+for f in /usr/lib/live/config/init-config.sh /usr/lib/live/boot/9990-initramfs-tools.sh; do
+    if [ -f "$f" ]; then
+        sed -i -e 's/LIVE_USER_FULLNAME="Debian Live user"/LIVE_USER_FULLNAME="Uhuru OS user"/' \
+               -e 's/Debian Live/Uhuru OS Live/g' "$f"
+    fi
+done
+for f in $(find /usr/lib/live -type f 2>/dev/null); do
+    if grep -q "LIVE_USER_FULLNAME=\"Debian" "$f" 2>/dev/null; then
+        sed -i 's/LIVE_USER_FULLNAME="Debian Live user"/LIVE_USER_FULLNAME="Uhuru OS user"/' "$f"
+    fi
+done
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v9): imekamilika."
+echo "Uhuru OS branding hook (v10): imekamilika."
