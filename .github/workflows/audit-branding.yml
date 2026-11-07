@@ -1,0 +1,67 @@
+name: Audit branding ya ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "Orodha ya run IDs (JSON) za kukagua"
+        required: true
+        default: '["42319654146","42322455611"]'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    strategy:
+      fail-fast: false
+      matrix:
+        run_id: ${{ fromJSON(inputs.run_ids) }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pakua ISO ya run ${{ matrix.run_id }}
+        run: |
+          mkdir -p iso
+          gh run download "${{ matrix.run_id }}" --repo "${{ github.repository }}" -n uhuru-os-iso -D iso
+          ls -lh iso
+
+      - name: Kagua branding
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD:/work" -w /work \
+            debian:bookworm bash -c "apt-get update && apt-get install -y --no-install-recommends xorriso squashfs-tools initramfs-tools ca-certificates && bash scripts/check-branding.sh iso/live-image-amd64.hybrid.iso config/bootloaders/isolinux/splash.png summary.txt"
+
+      - name: Hifadhi muhtasari
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: summary-${{ matrix.run_id }}
+          path: summary.txt
+          retention-days: 14
+          if-no-files-found: warn
+
+  compare:
+    needs: audit
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: summary-*
+          path: summaries
+
+      - name: Onyesha muhtasari na FAIL zote
+        run: |
+          for d in summaries/*; do
+            echo "===== $d ====="
+            cat "$d/summary.txt" 2>/dev/null || echo "(hakuna muhtasari)"
+            echo
+          done
+          echo "===== FAIL ZOTE ====="
+          grep -H "^FAIL" summaries/*/summary.txt 2>/dev/null || echo "hakuna FAIL"
