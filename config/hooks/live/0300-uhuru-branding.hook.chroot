@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v7)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v8)
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -65,5 +65,14 @@ if [ -d "$CAL" ]; then
     fi
 fi
 
+# 8. Jina kamili la mtumiaji wa live (live-config)
+for f in /usr/lib/live/config/*; do
+    [ -f "$f" ] && sed -i 's/Debian Live/Uhuru OS Live/g' "$f" || true
+done
+
+# 9. Maandishi yanayoonekana kwenye .desktop (Name, GenericName, Comment) kwenye menyu na xfce4
+find /usr/share/applications /usr/share/xfce4 -name '*.desktop' -exec sed -i \
+    '/^\(Name\|GenericName\|Comment\)/s/Debian/Uhuru OS/g' {} + 2>/dev/null || true
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v7): imekamilika."
+echo "Uhuru OS branding hook (v8): imekamilika."
