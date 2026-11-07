@@ -1,9 +1,10 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili, bila maandishi ya Debian yanayoonekana kwa mtumiaji
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v7)
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
 LOGO=/usr/share/icons/hicolor/512x512/apps/uhuru-os-logo.png
+SITE=https://www.letemagrouptech.lsicbusiness.online
 
 # 1. Plymouth: theme ya Uhuru kama chaguo-msingi, kisha usasishe initramfs
 if [ -f "$THEME" ]; then
@@ -13,14 +14,10 @@ if [ -f "$THEME" ]; then
         update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth "$THEME" 100
         update-alternatives --set default.plymouth "$THEME"
     fi
+    ln -sf "$THEME" /usr/share/plymouth/themes/default.plymouth
     command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u
 else
     echo "WARNING: theme ya uhuru-os haipo: $THEME" >&2
-fi
-
-# 1b. Hakikisha default.plymouth inaelekeza kwenye theme ya Uhuru
-if [ -f "$THEME" ]; then
-    ln -sf "$THEME" /usr/share/plymouth/themes/default.plymouth
 fi
 
 # 2. Hostname ya mfumo
@@ -36,35 +33,37 @@ if [ -f /usr/lib/live/config/0020-hostname ]; then
     sed -i 's/debian/uhuru-os/g' /usr/lib/live/config/0020-hostname
 fi
 
-# 4. Launchers na programu za Debian kwenye menyu na desktop
+# 4. Launchers na programu za Debian
 rm -f /usr/share/applications/install-debian.desktop
 rm -f /usr/share/xfce4/helpers/debian-sensible-browser.desktop
 rm -f /usr/share/xfce4/helpers/debian-x-terminal-emulator.desktop
 
-# 5. Icons za emblem-debian (nembo ya Debian)
+# 5. Icons za emblem-debian
 find /usr/share/icons -name 'emblem-debian*' -exec rm -f {} + 2>/dev/null || true
 
-# 6. Theme ya GRUB ya Debian
+# 6. GRUB theme ya Debian
 rm -f /etc/grub.d/05_debian_theme
 
-# 7. Branding ya Calamares: badilisha maandishi yanayoonekana ndani ya folda ile ile.
-#    Jina la folda na componentName hubaki "debian" kwa sababu Calamares huzitumia kutafuta branding.
+# 7. Calamares: maandishi, URL, logo, na credit
 CAL=/etc/calamares/branding/debian
 if [ -d "$CAL" ]; then
     find "$CAL" -type f \( -name '*.desc' -o -name '*.qml' \) -exec sed -i \
         -e 's/Debian GNU\/Linux/Uhuru OS/g' \
         -e 's/Debian 12/Uhuru OS 1.0/g' \
-        -e 's/Debian/Uhuru OS/g' {} +
-    # URL za installer: elekeza kwenye tovuti na msaada wa Uhuru OS
-    find "$CAL" -type f \( -name '*.desc' -o -name '*.qml' \) -exec sed -i \
-        -e 's#https\?://[A-Za-z.]*debian\.org[^ "<]*#https://letemagrouptech.co.tz/uhuruos#g' {} +
+        -e 's/Debian/Uhuru OS/g' \
+        -e "s#https\?://[A-Za-z.]*debian\.org[^ \"<]*#$SITE#g" {} +
     if [ -f "$LOGO" ]; then
         for img in "$CAL"/*.png; do
             [ -f "$img" ] && cp "$LOGO" "$img" || true
         done
     fi
+    if [ -f "$CAL/show.qml" ]; then
+        sed -i 's#Welcome to Uhuru OS\. <br/>#Welcome to Uhuru OS. <br/>Imetengenezwa na Letema Group Tech - letemagrouptech.lsicbusiness.online <br/>#' "$CAL/show.qml"
+    fi
+    if [ -f /usr/share/pixmaps/letema-logo.png ]; then
+        cp /usr/share/pixmaps/letema-logo.png "$CAL/letema-logo.png"
+    fi
 fi
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-ls -l /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo "default.plymouth: haipo kama faili"
-echo "Uhuru OS branding hook (v6): imekamilika."
+echo "Uhuru OS branding hook (v7): imekamilika."

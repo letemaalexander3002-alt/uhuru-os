@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Kuhusu Uhuru OS
+Comment=Imetengenezwa na Letema Group Tech
+Exec=xdg-open https://www.letemagrouptech.lsicbusiness.online
+Icon=/usr/share/pixmaps/letema-logo.png
+Terminal=false
+Categories=System;
