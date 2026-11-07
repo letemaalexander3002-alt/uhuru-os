@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v10)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v11)
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -58,7 +58,7 @@ if [ -d "$CAL" ]; then
         done
     fi
     if [ -f "$CAL/show.qml" ]; then
-        sed -i 's#Welcome to Uhuru OS\. <br/>#Welcome to Uhuru OS. <br/>Imetengenezwa na Letema Group Tech - letemagrouptech.lsicbusiness.online <br/>#' "$CAL/show.qml"
+        sed -i 's#Welcome to Uhuru OS#Welcome to Uhuru OS - Imetengenezwa na Letema Group Tech (letemagrouptech.lsicbusiness.online)#' "$CAL/show.qml"
     fi
     if [ -f /usr/share/pixmaps/letema-logo.png ]; then
         cp /usr/share/pixmaps/letema-logo.png "$CAL/letema-logo.png"
@@ -93,4 +93,4 @@ for f in $(find /usr/lib/live -type f 2>/dev/null); do
 done
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v10): imekamilika."
+echo "Uhuru OS branding hook (v11): imekamilika."
