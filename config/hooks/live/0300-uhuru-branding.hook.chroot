@@ -1,5 +1,6 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v11)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v12)
+# v12: password ya live user = uhuru, na lock screen imezimwa
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -92,5 +93,26 @@ for f in $(find /usr/lib/live -type f 2>/dev/null); do
     fi
 done
 
+# 12. Password ya live user: "uhuru" (username inabaki "user")
+#     live-config huweka password kwa hash ya DES crypt kwenye 0030-user-setup.
+#     Hash ya "live"  = 8Ab05sVQ4LLps  (chaguo-msingi ya Debian)
+#     Hash ya "uhuru" = 8Anb4IpaWQzBY  (perl -e 'print crypt("uhuru","8A")')
+UFILE=/usr/lib/live/config/0030-user-setup
+OLD_HASH='8Ab05sVQ4LLps'
+NEW_HASH='8Anb4IpaWQzBY'
+if [ -f "$UFILE" ] && grep -q "_PASSWORD=\"$OLD_HASH\"" "$UFILE"; then
+    sed -i "s|_PASSWORD=\"$OLD_HASH\"|_PASSWORD=\"$NEW_HASH\"|" "$UFILE"
+    grep -q "_PASSWORD=\"$NEW_HASH\"" "$UFILE" || { echo "ERROR: password haikubadilika kwenye $UFILE" >&2; exit 1; }
+    echo "Live password: imewekwa kuwa uhuru"
+else
+    echo "ERROR: mstari wa _PASSWORD haukupatikana kwenye $UFILE" >&2
+    exit 1
+fi
+
+# 13. Zima lock screen (light-locker / screensaver) ili mfumo usijifunge wenyewe
+rm -f /etc/xdg/autostart/light-locker.desktop
+rm -f /etc/xdg/autostart/xfce4-screensaver.desktop
+rm -f /etc/xdg/autostart/xscreensaver.desktop
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v11): imekamilika."
+echo "Uhuru OS branding hook (v12): imekamilika."
