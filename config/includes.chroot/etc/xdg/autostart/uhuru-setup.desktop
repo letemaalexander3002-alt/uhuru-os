@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Uhuru OS Setup
+Comment=Usajili wa mtumiaji wa kwanza
+Exec=/usr/local/bin/uhuru-setup
+Terminal=false
+X-GNOME-Autostart-enabled=true

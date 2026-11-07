@@ -1,0 +1,36 @@
+#!/bin/bash
+# Uhuru OS — skrini ya kwanza ya usajili (kama Windows OOBE).
+# Inaendeshwa kwenye live session pekee, mara moja.
+grep -q 'boot=live' /proc/cmdline || exit 0
+[ -e /var/lib/uhuru-setup.done ] && exit 0
+command -v zenity >/dev/null 2>&1 || exit 0
+
+TITLE="Uhuru OS - Karibu"
+z() { zenity --title="$TITLE" --width=420 "$@"; }
+
+z --info --text="<b>Karibu Uhuru OS</b>\n\nTengeneza akaunti yako. Jina na password uvyochagua ndivyo utakavyotumia kuingia kila wakati.\n\nImetengenezwa na Letema Group Tech." --ok-label="Anza" || true
+
+while :; do
+    FULLNAME=$(z --entry --text="Jina lako kamili:") || continue
+    [ -n "$FULLNAME" ] || { z --error --text="Weka jina lako."; continue; }
+
+    USERNAME=$(z --entry --text="Chagua jina la kuingia (herufi ndogo, namba, - au _; angalau 3):") || continue
+    printf '%s' "$USERNAME" | grep -Eq '^[a-z][a-z0-9_-]{2,30}$' || {
+        z --error --text="Jina la kuingia lianze kwa herufi ndogo; litumie herufi ndogo, namba, - au _ (3 hadi 31)."; continue; }
+
+    PASS1=$(z --password --text="Weka password (angalau herufi 8):") || continue
+    [ "${#PASS1}" -ge 8 ] || { z --error --text="Password iwe angalau herufi 8."; continue; }
+    PASS2=$(z --password --text="Rudia password:") || continue
+    [ "$PASS1" = "$PASS2" ] || { z --error --text="Password hazilingani. Jaribu tena."; continue; }
+
+    printf '%s\n%s\n%s\n' "$FULLNAME" "$USERNAME" "$PASS1" | sudo -n /usr/local/sbin/uhuru-create-user
+    RC=$?
+    unset PASS1 PASS2
+    case "$RC" in
+        0) z --info --text="Akaunti yako imetengenezwa.\n\nSasa utaelekezwa kwenye skrini ya kuingia. Ingia na jina na password uliyochagua."; exit 0 ;;
+        3) z --error --text="Jina hilo limeshatumika. Chagua jingine." ;;
+        2) z --error --text="Jina la kuingia si sahihi." ;;
+        4) z --error --text="Password ni fupi mno." ;;
+        *) z --error --text="Imeshindikana kutengeneza akaunti (kosa $RC). Jaribu tena." ;;
+    esac
+done

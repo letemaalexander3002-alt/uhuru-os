@@ -1,0 +1,56 @@
+#!/bin/bash
+# Uhuru OS — huunda akaunti ya mtumiaji wa kwanza na kufunga akaunti ya live.
+# Inaendeshwa kama root kupitia sudo na uhuru-setup.
+# Stdin (mistari 3): jina kamili, username, password. Password haipiti kwenye argument za amri.
+# Exit codes: 1 = mazingira si sahihi, 2 = username si sahihi, 3 = username limetumika, 4 = password fupi
+set -eu
+
+[ "$(id -u)" -eq 0 ] || { echo "inahitaji root" >&2; exit 1; }
+grep -q 'boot=live' /proc/cmdline || { echo "si live session" >&2; exit 1; }
+[ ! -e /var/lib/uhuru-setup.done ] || { echo "setup imeshafanyika" >&2; exit 1; }
+
+IFS= read -r FULLNAME
+IFS= read -r USERNAME
+IFS= read -r PASSWORD
+
+FULLNAME=$(printf '%s' "$FULLNAME" | tr -d ':,\n\r' | cut -c1-60)
+
+printf '%s' "$USERNAME" | grep -Eq '^[a-z][a-z0-9_-]{2,30}$' || exit 2
+if id "$USERNAME" >/dev/null 2>&1 || getent group "$USERNAME" >/dev/null 2>&1; then exit 3; fi
+[ "${#PASSWORD}" -ge 8 ] || exit 4
+
+# Akaunti ya live (UID 1000) kabla hatujaunda mpya
+LIVE_USER=$(getent passwd 1000 | cut -d: -f1 || true)
+
+# Vikundi vilivyopo tu
+WANTED="sudo audio video netdev plugdev cdrom dip lpadmin bluetooth scanner"
+GRP=""
+for g in $WANTED; do
+    if getent group "$g" >/dev/null 2>&1; then GRP="${GRP:+$GRP,}$g"; fi
+done
+
+useradd -m -s /bin/bash -c "$FULLNAME" ${GRP:+-G "$GRP"} "$USERNAME"
+printf '%s:%s\n' "$USERNAME" "$PASSWORD" | chpasswd
+
+# Funga akaunti ya default na uifiche kwenye login screen
+if [ -n "$LIVE_USER" ] && [ "$LIVE_USER" != "$USERNAME" ]; then
+    passwd -l "$LIVE_USER" >/dev/null 2>&1 || true
+    mkdir -p /var/lib/AccountsService/users
+    printf '[User]\nSystemAccount=true\n' > "/var/lib/AccountsService/users/$LIVE_USER"
+fi
+
+# Ondoa sudo bila password ya live-config
+rm -f /etc/sudoers.d/live
+
+# Zima autologin (lightdm.conf ina kipaumbele juu ya conf.d, kwa hiyo hariri zote mbili)
+for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/*.conf; do
+    [ -f "$f" ] && sed -i -E 's/^[[:space:]]*(autologin-user[A-Za-z-]*)[[:space:]]*=/#\1=/' "$f" || true
+done
+mkdir -p /etc/lightdm/lightdm.conf.d
+printf '[Seat:*]\nautologin-user=\n' > /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf
+
+touch /var/lib/uhuru-setup.done
+
+# Anzisha upya login screen baada ya sekunde 2 ili mtumiaji aingie na akaunti yake
+systemd-run --quiet --on-active=2 --unit=uhuru-relogin systemctl restart lightdm >/dev/null 2>&1 || true
+exit 0

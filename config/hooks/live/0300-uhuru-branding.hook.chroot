@@ -1,6 +1,7 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v12)
-# v12: password ya live user = uhuru, na lock screen imezimwa
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13)
+# v12: password ya live user = uhuru, lock screen imezimwa
+# v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -114,5 +115,13 @@ rm -f /etc/xdg/autostart/light-locker.desktop
 rm -f /etc/xdg/autostart/xfce4-screensaver.desktop
 rm -f /etc/xdg/autostart/xscreensaver.desktop
 
+# 14. Wizard ya kujisajili (OOBE): hakikisha faili zipo na zinaweza kuendeshwa
+command -v zenity >/dev/null 2>&1 || { echo "ERROR: zenity haijasakinishwa (angalia config/package-lists/uhuru-setup.list.chroot)" >&2; exit 1; }
+for f in /usr/local/bin/uhuru-setup /usr/local/sbin/uhuru-create-user /etc/xdg/autostart/uhuru-setup.desktop; do
+    [ -f "$f" ] || { echo "ERROR: $f haipo (angalia config/includes.chroot)" >&2; exit 1; }
+done
+chmod 0755 /usr/local/bin/uhuru-setup /usr/local/sbin/uhuru-create-user
+chmod 0644 /etc/xdg/autostart/uhuru-setup.desktop
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v12): imekamilika."
+echo "Uhuru OS branding hook (v13): imekamilika."
