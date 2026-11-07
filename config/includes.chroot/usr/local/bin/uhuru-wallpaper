@@ -1,0 +1,49 @@
+#!/bin/bash
+# Uhuru OS — wallpaper zinazobadilika zenyewe.
+#   uhuru-wallpaper          anza mzunguko (inaendeshwa kiotomatiki kila mtumiaji anapoingia)
+#   uhuru-wallpaper --once   badilisha kuwa inayofuata mara moja kisha toka
+# Muda: UHURU_WALLPAPER_MINUTES (default 5).
+# Kuzima mzunguko: tengeneza faili  ~/.config/uhuru/no-wallpaper-rotate
+DIR=${UHURU_WALLPAPER_DIR:-/usr/share/backgrounds/uhuru-os}
+INTERVAL=${UHURU_WALLPAPER_MINUTES:-5}
+OFF="$HOME/.config/uhuru/no-wallpaper-rotate"
+STATE="$HOME/.cache/uhuru-wallpaper.idx"
+
+[ "$1" = "--once" ] || { [ -e "$OFF" ] && exit 0; }
+command -v xfconf-query >/dev/null 2>&1 || exit 0
+shopt -s nullglob
+WPS=("$DIR"/uhuru-os-wallpaper-*.png)
+N=${#WPS[@]}
+[ "$N" -gt 0 ] || exit 0
+
+props() { xfconf-query -c xfce4-desktop -l 2>/dev/null | grep 'last-image$'; }
+
+ensure_props() {
+    local i m
+    for i in $(seq 1 30); do [ -n "$(props)" ] && return 0; sleep 1; done
+    # xfdesktop haijaandika mali bado: tengeneza kwa majina ya monitor
+    for m in 0 $(xrandr --query 2>/dev/null | awk '/ connected/{print $1}'); do
+        xfconf-query -c xfce4-desktop -n -t string -p "/backdrop/screen0/monitor$m/workspace0/last-image" -s "${WPS[0]}" 2>/dev/null
+    done
+}
+
+set_wp() {
+    local f=$1 p base
+    while IFS= read -r p; do
+        base=${p%last-image}
+        xfconf-query -c xfce4-desktop -p "$p" -s "$f" 2>/dev/null
+        xfconf-query -c xfce4-desktop -n -t int -p "${base}image-style" -s 5 2>/dev/null   # 5 = zoomed
+    done < <(props)
+}
+
+mkdir -p "$(dirname "$STATE")"
+idx=$(cat "$STATE" 2>/dev/null)
+[[ "$idx" =~ ^[0-9]+$ ]] || idx=$((RANDOM % N))
+ensure_props
+while :; do
+    idx=$(( (idx + 1) % N ))
+    echo "$idx" > "$STATE"
+    set_wp "${WPS[$idx]}"
+    [ "$1" = "--once" ] && exit 0
+    sleep $(( INTERVAL * 60 ))
+done

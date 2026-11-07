@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Uhuru OS Wallpaper
+Comment=Hubadilisha wallpaper za Uhuru OS
+Exec=/usr/local/bin/uhuru-wallpaper
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

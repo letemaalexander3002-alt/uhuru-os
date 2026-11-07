@@ -1,0 +1,19 @@
+KARIBU UHURU OS 1.0
+Imetengenezwa na Letema Group Tech
+https://www.letemagrouptech.lsicbusiness.online
+
+PROGRAMU ZA MSINGI (ziko kwenye menyu ya programu na kwenye Desktop):
+  Firefox, Chromium ...... kuvinjari mtandao
+  Uhuru Terminal ......... terminal ya amri
+  Thunar ................. kusimamia mafaili
+  LibreOffice ............ Writer (nyaraka), Calc (majedwali), Impress (mawasilisho)
+  VLC .................... video na muziki
+  Atril .................. kusoma PDF
+  Mousepad ............... kuhariri maandishi
+
+VIDOKEZO:
+  - Kufunga skrini: Ctrl + Alt + L
+  - Wallpaper hubadilika zenyewe kila dakika chache. Kuzima mzunguko:
+      mkdir -p ~/.config/uhuru && touch ~/.config/uhuru/no-wallpaper-rotate
+  - Kubadilisha wallpaper mara moja:  uhuru-wallpaper --once
+  - Kuhusu mfumo huu: tafuta "Kuhusu Uhuru OS" kwenye menyu.

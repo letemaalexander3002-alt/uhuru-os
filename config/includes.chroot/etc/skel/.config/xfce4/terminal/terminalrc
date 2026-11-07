@@ -1,0 +1,11 @@
+[Configuration]
+FontName=Monospace 11
+MiscAlwaysShowTabs=FALSE
+MiscBell=FALSE
+MiscDefaultGeometry=110x30
+MiscMenubarDefault=FALSE
+ScrollingLines=10000
+ColorForeground=#e6f1ee
+ColorBackground=#06222c
+ColorCursor=#fcd116
+ColorCursorUseDefault=FALSE
