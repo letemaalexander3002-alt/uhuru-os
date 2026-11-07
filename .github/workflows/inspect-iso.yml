@@ -1,96 +1,62 @@
 name: Inspect Uhuru OS ISO
 
+# Hupakua ISO ya run ya "Build Uhuru OS ISO" KWENYE seva za GitHub, inaikagua, inaiwasha kwenye QEMU
+# na kupiga picha za skrini. Matokeo ni artifact ndogo "uhuru-os-report" (KB chache).
+# Kuiendesha kwa mkono:  gh workflow run inspect-iso.yml -f run_id=<ID ya run ya build>
+# Kuzuia ukaguzi wa kiotomatiki baada ya kila build (kuokoa dakika za Actions): futa kipengele cha workflow_run.
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "ID ya run ya build ambayo ISO yake ikaguliwe"
+        description: "ID ya run ya 'Build Uhuru OS ISO' yenye artifact uhuru-os-iso"
         required: true
-        default: "42164938978"
+  workflow_run:
+    workflows: ["Build Uhuru OS ISO"]
+    types: [completed]
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   inspect:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
     env:
-      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
     steps:
-      - name: Pakua artifact ya ISO kutoka run
+      - uses: actions/checkout@v4
+
+      - name: Pakua ISO artifact kutoka run ${{ env.RUN_ID }}
+        uses: actions/download-artifact@v4
+        with:
+          name: uhuru-os-iso
+          run-id: ${{ env.RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: iso
+
+      - name: Weka zana
         run: |
-          gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" -n uhuru-os-iso -D "$PWD"
-          ls -lh
-          sha256sum live-image-amd64.hybrid.iso
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xorriso squashfs-tools qemu-system-x86 socat imagemagick
 
-      - name: Kagua branding yote ndani ya ISO
+      - name: Ripoti ya ukaguzi wa ISO
+        run: bash scripts/inspect-iso.sh "$(ls iso/*.iso | head -1)" out
+
+      - name: Wezesha KVM
         run: |
-          docker run --rm --privileged \
-            -v "$PWD:/work" -w /work \
-            debian:bookworm bash -c '
-              set -e
-              apt-get update
-              apt-get install -y --no-install-recommends xorriso squashfs-tools initramfs-tools ca-certificates
-              ISO=live-image-amd64.hybrid.iso
-              mkdir -p report iso-boot live-dir
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
 
-              # 1. Bootloader: maandishi yenye "debian"
-              xorriso -osirrox on -indev $ISO -extract /isolinux iso-boot/isolinux || true
-              xorriso -osirrox on -indev $ISO -extract /boot/grub iso-boot/grub || true
-              grep -rIn -i "debian" iso-boot > report/1-bootloader-debian.txt || echo "(hakuna)" > report/1-bootloader-debian.txt
+      - name: Washa ISO na piga picha za skrini
+        run: bash scripts/boot-screens.sh "$(ls iso/*.iso | head -1)" out/screens
 
-              # 2. Initrd: theme ya uhuru-os ndani?
-              xorriso -osirrox on -indev $ISO -extract /live live-dir || true
-              for f in live-dir/initrd*; do
-                [ -f "$f" ] && lsinitramfs "$f" | grep -i -E "plymouth/themes/(uhuru|emerald|text)|plymouth.plymouth|default.plymouth" >> report/2-initrd-plymouth.txt || true
-              done
-              [ -s report/2-initrd-plymouth.txt ] || echo "(hakuna plymouth kwenye initrd)" > report/2-initrd-plymouth.txt
-
-              # 3. Squashfs kamili: toa kila kitu
-              xorriso -osirrox on -indev $ISO -extract /live/filesystem.squashfs fs.squashfs
-              unsquashfs -d root fs.squashfs > /dev/null
-
-              # 3a. Default ya Plymouth
-              readlink -f root/usr/share/plymouth/themes/default.plymouth > report/3a-plymouth-default.txt 2>/dev/null || echo "(default.plymouth haipo)" > report/3a-plymouth-default.txt
-              cat root/etc/alternatives/default.plymouth 2>/dev/null >> report/3a-plymouth-default.txt || true
-
-              # 3b. Maandishi yote ya "debian" yanayoonekana kwa mtumiaji (faili za maandishi tu)
-              grep -rIl -i "debian" \
-                root/etc root/home root/root root/usr/share/applications root/usr/share/desktop-directories \
-                root/usr/share/xfce4 root/usr/share/backgrounds root/usr/share/images root/usr/share/icons \
-                root/usr/share/plymouth root/usr/share/lightdm root/usr/share/pixmaps root/usr/lib/live \
-                root/usr/share/calamares root/usr/share/doc-base root/usr/share/glib-2.0 root/usr/share/themes \
-                2>/dev/null | sort > report/3b-leak-files.txt || true
-              : > report/3c-leak-lines.txt
-              while read -r f; do
-                grep -In -i "debian" "$f" | sed "s|^|$f:|" | head -n 5 >> report/3c-leak-lines.txt || true
-              done < report/3b-leak-files.txt
-
-              # 3d. Majina ya mtumiaji na desktop
-              unsquashfs -cat fs.squashfs etc/passwd > report/3d-passwd.txt 2>/dev/null || true
-              unsquashfs -cat fs.squashfs usr/lib/live/config/0030-user-setup > report/3d-live-user-setup.txt 2>/dev/null || true
-              grep -rIn -i "fullname\|Debian Live" root/usr/lib/live root/etc/passwd 2>/dev/null > report/3d-fullname.txt || echo "(hakuna)" > report/3d-fullname.txt
-
-              # 3e. Hostname na os-release
-              cat root/etc/hostname > report/3e-hostname.txt 2>/dev/null || echo "(hakuna etc/hostname)" > report/3e-hostname.txt
-              cat root/etc/os-release > report/3e-os-release.txt 2>/dev/null || true
-
-              echo "===== 1. bootloader debian ====="; cat report/1-bootloader-debian.txt
-              echo "===== 2. initrd plymouth ====="; cat report/2-initrd-plymouth.txt
-              echo "===== 3a. plymouth default ====="; cat report/3a-plymouth-default.txt
-              echo "===== 3b. mafaili yenye debian ====="; cat report/3b-leak-files.txt
-              echo "===== 3c. mistari yenye debian ====="; cat report/3c-leak-lines.txt | head -n 200
-              echo "===== 3d. fullname ====="; cat report/3d-fullname.txt
-              echo "===== 3e. hostname ====="; cat report/3e-hostname.txt
-              echo "===== 3e. os-release ====="; cat report/3e-os-release.txt
-            '
-
-      - name: Hifadhi ripoti kamili
+      - name: Pakia ripoti na picha
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: branding-report
-          path: |
-            report/
-          retention-days: 14
+          name: uhuru-os-report
+          path: out
+          if-no-files-found: warn
