@@ -57,9 +57,8 @@ CN=$(grep -h "Debian" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
 if [ "$CN" -eq 0 ]; then ok calamares_maandishi "hakuna"; else bad calamares_maandishi "mistari=$CN"; fi
 
 # 9. Calamares: URL za debian.org
-CU=$(grep -hE "https?://[^ \"<]*debian\.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
-CUF=$(grep -lE "https?://[^ \"<]*debian\.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | xargs -r -n1 basename | tr "\n" " ")
-if [ "$CU" -eq 0 ]; then ok calamares_url "hakuna debian.org"; else bad calamares_url "$CUF"; fi
+CU=$(grep -l "debian.org" "$CB"/*.desc "$CB"/*.qml 2>/dev/null | wc -l)
+if [ "$CU" -eq 0 ]; then ok calamares_url "hakuna debian.org"; else bad calamares_url "faili=$CU"; fi
 
 # 10. Launchers za desktop
 LA=$(grep -li "debian" "$R"/usr/share/applications/*.desktop 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')
@@ -82,13 +81,11 @@ if [ -f "$R/etc/grub.d/05_debian_theme" ]; then bad grub_theme_debian "bado ipo"
 
 # 15. Jina kamili la mtumiaji wa live (maoni hayahesabiwi)
 FN=$(grep -rn "Debian Live" "$R/usr/lib/live" 2>/dev/null | grep -v ":[[:space:]]*#" | wc -l)
-FNF=$(grep -rn "Debian Live" "$R/usr/lib/live" 2>/dev/null | grep -v ":[[:space:]]*#" | sed "s#$R/usr/lib/live/##" | cut -c1-120 | tr "\n" "|")
-if [ "$FN" -eq 0 ]; then ok live_fullname "hakuna"; else bad live_fullname "$FNF"; fi
+if [ "$FN" -eq 0 ]; then ok live_fullname "hakuna"; else bad live_fullname "mistari=$FN"; fi
 
 # 16. Maandishi ya Debian kwenye xfce4, backgrounds, applications
 UV=$(grep -rIl "Debian" "$R/usr/share/xfce4" "$R/usr/share/backgrounds" "$R/usr/share/applications" 2>/dev/null | wc -l)
-UVF=$(grep -rIl "Debian" "$R/usr/share/xfce4" "$R/usr/share/backgrounds" "$R/usr/share/applications" 2>/dev/null | sed "s#^$R##" | tr "\n" " ")
-if [ "$UV" -eq 0 ]; then ok user_visible_debian "hakuna"; else bad user_visible_debian "$UVF"; fi
+if [ "$UV" -eq 0 ]; then ok user_visible_debian "hakuna"; else bad user_visible_debian "faili=$UV"; fi
 
 # 17. Bootappend ya Awamu 3 kwenye live.cfg
 if grep -q "username=mtumiaji" "$LC" 2>/dev/null && grep -q "console=ttyS0" "$LC" 2>/dev/null; then
@@ -99,6 +96,42 @@ fi
 
 # 18. Password ya majaribio (kwa VM tu)
 if grep -q "user-default-password" "$LC" 2>/dev/null; then info password_majaribio "ipo (kwa VM tu)"; else info password_majaribio "haipo"; fi
+
+# 19. Credit ya Letema Group Tech (kazi ya repo, iko kwenye /work wakati wa ukaguzi)
+PL_ISO="$R/usr/share/plymouth/themes/uhuru-os/logo.png"
+PL_REPO="config/includes.chroot/usr/share/plymouth/themes/uhuru-os/logo.png"
+if [ -f "$PL_ISO" ] && [ -f "$PL_REPO" ] && [ "$(sha256sum < "$PL_ISO")" = "$(sha256sum < "$PL_REPO")" ]; then
+  ok credit_plymouth_logo "inalingana na repo"
+else
+  bad credit_plymouth_logo "haifanani na repo au haipo"
+fi
+
+WP_ISO="$R/usr/share/backgrounds/uhuru-os/uhuru-os-wallpaper.png"
+WP_REPO="config/includes.chroot/usr/share/backgrounds/uhuru-os/uhuru-os-wallpaper.png"
+if [ -f "$WP_ISO" ] && [ -f "$WP_REPO" ] && [ "$(sha256sum < "$WP_ISO")" = "$(sha256sum < "$WP_REPO")" ]; then
+  ok credit_wallpaper "inalingana na repo"
+else
+  bad credit_wallpaper "haifanani na repo au haipo"
+fi
+
+if [ -f "$R/usr/share/pixmaps/letema-logo.png" ]; then ok credit_logo_pixmaps "ipo"; else bad credit_logo_pixmaps "haipo"; fi
+
+if grep -q "letemagrouptech.lsicbusiness.online" "$R/usr/share/applications/uhuru-about.desktop" 2>/dev/null \
+   && grep -q "letemagrouptech.lsicbusiness.online" "$R/etc/skel/Desktop/uhuru-about.desktop" 2>/dev/null; then
+  ok credit_about_desktop "ipo kwenye menyu na desktop"
+else
+  bad credit_about_desktop "haipo au URL sio sahihi"
+fi
+
+if grep -q "Letema Group Tech" "$CB/show.qml" 2>/dev/null; then ok credit_installer_text "ipo kwenye show.qml"; else bad credit_installer_text "haipo kwenye show.qml"; fi
+
+if [ -f "$CB/letema-logo.png" ]; then ok credit_installer_logo "ipo"; else bad credit_installer_logo "haipo"; fi
+
+if grep -q "SUPPORT_URL=.*letemagrouptech.lsicbusiness.online" "$R/etc/os-release" 2>/dev/null; then
+  ok credit_support_url "lsicbusiness.online"
+else
+  bad credit_support_url "$(grep '^SUPPORT_URL' "$R/etc/os-release" 2>/dev/null)"
+fi
 
 P=$(grep -c "^PASS" "$OUT"); F=$(grep -c "^FAIL" "$OUT")
 echo "MUHTASARI: PASS=$P FAIL=$F" >> "$OUT"
