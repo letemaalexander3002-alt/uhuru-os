@@ -1,7 +1,9 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13)
-# v12: password ya live user = uhuru, lock screen imezimwa
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.1)
+# v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
+# v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
+#        Firefox, About, firewall. Hatua 12 na 14 zinasimamisha build zikifeli; zingine ni best-effort.
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -110,10 +112,20 @@ else
     exit 1
 fi
 
-# 13. Zima lock screen (light-locker / screensaver) ili mfumo usijifunge wenyewe
-rm -f /etc/xdg/autostart/light-locker.desktop
+# 13. Lock screen: IWASHE (akaunti sasa ni halisi). Epuka lockers mbili kwa pamoja.
 rm -f /etc/xdg/autostart/xfce4-screensaver.desktop
 rm -f /etc/xdg/autostart/xscreensaver.desktop
+if grep -rqs "apps.light-locker" /usr/share/glib-2.0/schemas 2>/dev/null; then
+    cat > /usr/share/glib-2.0/schemas/90_uhuru-os.gschema.override <<'EOF'
+[apps.light-locker]
+lock-on-suspend=true
+late-locking=false
+lock-after-screensaver=uint32 0
+EOF
+    glib-compile-schemas /usr/share/glib-2.0/schemas/ 2>/dev/null || echo "WARNING: glib-compile-schemas imefeli" >&2
+else
+    echo "WARNING: schema ya light-locker haipo; lock screen inatumia mipangilio ya default" >&2
+fi
 
 # 14. Wizard ya kujisajili (OOBE): hakikisha faili zipo na zinaweza kuendeshwa
 command -v zenity >/dev/null 2>&1 || { echo "ERROR: zenity haijasakinishwa (angalia config/package-lists/uhuru-setup.list.chroot)" >&2; exit 1; }
@@ -123,5 +135,101 @@ done
 chmod 0755 /usr/local/bin/uhuru-setup /usr/local/sbin/uhuru-create-user
 chmod 0644 /etc/xdg/autostart/uhuru-setup.desktop
 
+# 15. Utambulisho wa mfumo: os-release, issue, motd
+OSR=$(readlink -f /etc/os-release 2>/dev/null || true)
+if [ -n "$OSR" ] && [ -f "$OSR" ]; then
+    sed -i -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Uhuru OS 1.0"/' \
+           -e 's/^NAME=.*/NAME="Uhuru OS"/' \
+           -e "s#^HOME_URL=.*#HOME_URL=\"$SITE\"#" \
+           -e "s#^SUPPORT_URL=.*#SUPPORT_URL=\"$SITE\"#" \
+           -e "s#^BUG_REPORT_URL=.*#BUG_REPORT_URL=\"$SITE\"#" "$OSR" || true
+fi
+printf 'Uhuru OS 1.0 \\n \\l\n\n' > /etc/issue
+printf 'Uhuru OS 1.0\n' > /etc/issue.net
+printf '\nKaribu Uhuru OS 1.0\nImetengenezwa na Letema Group Tech - %s\n\n' "$SITE" > /etc/motd
+
+# 16. GRUB ya mfumo utakaosakinishwa: jina la distributor
+if [ -f /etc/default/grub ]; then
+    sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Uhuru OS"/' /etc/default/grub || true
+fi
+
+# 17. Saa ya Afrika Mashariki kama chaguo-msingi (mtumiaji anaweza kuchagua kingine kwenye wizard)
+TZNAME=Africa/Dar_es_Salaam
+if [ -f "/usr/share/zoneinfo/$TZNAME" ]; then
+    echo "$TZNAME" > /etc/timezone
+    ln -sf "/usr/share/zoneinfo/$TZNAME" /etc/localtime
+fi
+
+# 18. Wallpaper ya desktop (desktop-base) na login screen (lightdm-gtk-greeter)
+BG_DIR=/usr/share/backgrounds/uhuru-os
+WP_PNG="$BG_DIR/uhuru-os-wallpaper.png"
+LOGIN_PNG="$BG_DIR/uhuru-os-login.png"
+if [ -f "$WP_PNG" ]; then
+    WP_SVG="$BG_DIR/uhuru-os-wallpaper.svg"
+    {
+        printf '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080"><image width="1920" height="1080" xlink:href="data:image/png;base64,'
+        base64 -w0 "$WP_PNG"
+        printf '"/></svg>\n'
+    } > "$WP_SVG"
+    # a) Badilisha wallpaper za Debian (desktop-base) kuwa za Uhuru
+    for dir in /usr/share/desktop-base/*/wallpaper/contents/images; do
+        [ -d "$dir" ] || continue
+        for f in "$dir"/*.svg; do
+            [ -e "$f" ] && ln -sf "$WP_SVG" "$f" || true
+        done
+    done
+    # b) Alternative ya desktop-background (njia halisi ya link inasomwa kutoka mfumo)
+    if command -v update-alternatives >/dev/null 2>&1; then
+        ALT_LINK=$(update-alternatives --query desktop-background 2>/dev/null | sed -n 's/^Link: //p')
+        if [ -n "$ALT_LINK" ]; then
+            update-alternatives --install "$ALT_LINK" desktop-background "$WP_SVG" 100000 || true
+            update-alternatives --set desktop-background "$WP_SVG" || true
+        fi
+    fi
+else
+    echo "WARNING: wallpaper ya Uhuru haipo: $WP_PNG" >&2
+fi
+if [ -d /etc/lightdm ] && [ -f "$LOGIN_PNG" ]; then
+    cat > /etc/lightdm/lightdm-gtk-greeter.conf <<EOF
+[greeter]
+background=$LOGIN_PNG
+user-background=false
+clock-format=%a %d %b, %H:%M
+indicators=~host;~spacer;~clock;~spacer;~language;~session;~a11y;~power
+position=50%,center 50%,center
+font-name=Sans 11
+EOF
+fi
+
+# 19. Firefox: homepage na bookmark ya Letema Group Tech
+for FFDIR in /usr/lib/firefox-esr /usr/lib/firefox; do
+    if [ -d "$FFDIR" ]; then
+        mkdir -p "$FFDIR/distribution"
+        cat > "$FFDIR/distribution/policies.json" <<EOF
+{
+  "policies": {
+    "Homepage": { "URL": "$SITE", "Locked": false, "StartPage": "homepage" },
+    "OverrideFirstRunPage": "$SITE",
+    "DontCheckDefaultBrowser": true,
+    "ManagedBookmarks": [
+      { "toplevel_name": "Uhuru OS" },
+      { "name": "Letema Group Tech", "url": "$SITE" }
+    ]
+  }
+}
+EOF
+    fi
+done
+
+# 20. Launchers na Desktop: ruhusa
+chmod 0755 /usr/local/bin/uhuru-about 2>/dev/null || true
+[ -f /etc/skel/Desktop/letema-group-tech.desktop ] && chmod 0755 /etc/skel/Desktop/letema-group-tech.desktop || true
+
+# 21. Firewall (ufw) iwashwe kwa default
+if [ -f /etc/ufw/ufw.conf ]; then
+    sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf || true
+    systemctl enable ufw >/dev/null 2>&1 || true
+fi
+
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13): imekamilika."
+echo "Uhuru OS branding hook (v13.1): imekamilika."

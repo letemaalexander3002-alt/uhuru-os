@@ -1,8 +1,9 @@
 #!/bin/bash
-# Uhuru OS — huunda akaunti ya mtumiaji wa kwanza na kufunga akaunti ya live.
-# Inaendeshwa kama root kupitia sudo na uhuru-setup.
-# Stdin (mistari 3): jina kamili, username, password. Password haipiti kwenye argument za amri.
-# Exit codes: 1 = mazingira si sahihi, 2 = username si sahihi, 3 = username limetumika, 4 = password fupi
+# Uhuru OS — huunda akaunti ya mtumiaji wa kwanza, huweka jina la kompyuta na saa,
+# na kufunga akaunti ya live. Inaendeshwa kama root kupitia sudo na uhuru-setup.
+# Stdin (mistari 6): jina kamili, username, password, jina la kompyuta, timezone, autologin (yes/no).
+# Password haipiti kwenye argument za amri.
+# Exit: 1 mazingira si sahihi | 2 username | 3 username limetumika | 4 password fupi | 5 jina la kompyuta | 6 timezone
 set -eu
 
 [ "$(id -u)" -eq 0 ] || { echo "inahitaji root" >&2; exit 1; }
@@ -12,17 +13,40 @@ grep -q 'boot=live' /proc/cmdline || { echo "si live session" >&2; exit 1; }
 IFS= read -r FULLNAME
 IFS= read -r USERNAME
 IFS= read -r PASSWORD
+IFS= read -r COMPUTER
+IFS= read -r TZSEL
+IFS= read -r AUTOLOGIN
 
 FULLNAME=$(printf '%s' "$FULLNAME" | tr -d ':,\n\r' | cut -c1-60)
 
+# ---- thibitisha vyote kabla ya kubadilisha chochote ----
 printf '%s' "$USERNAME" | grep -Eq '^[a-z][a-z0-9_-]{2,30}$' || exit 2
 if id "$USERNAME" >/dev/null 2>&1 || getent group "$USERNAME" >/dev/null 2>&1; then exit 3; fi
 [ "${#PASSWORD}" -ge 8 ] || exit 4
+printf '%s' "$COMPUTER" | grep -Eq '^[a-z0-9][a-z0-9-]{0,30}$' || exit 5
+printf '%s' "$TZSEL" | grep -Eq '^[A-Za-z0-9_+/-]+$' || exit 6
+case "$TZSEL" in *..*) exit 6 ;; esac
+[ -f "/usr/share/zoneinfo/$TZSEL" ] || exit 6
+[ "$AUTOLOGIN" = "yes" ] || AUTOLOGIN=no
 
-# Akaunti ya live (UID 1000) kabla hatujaunda mpya
+# ---- saa ----
+echo "$TZSEL" > /etc/timezone
+ln -sf "/usr/share/zoneinfo/$TZSEL" /etc/localtime
+timedatectl set-timezone "$TZSEL" >/dev/null 2>&1 || true
+
+# ---- jina la kompyuta ----
+echo "$COMPUTER" > /etc/hostname
+hostname "$COMPUTER" >/dev/null 2>&1 || true
+hostnamectl set-hostname "$COMPUTER" >/dev/null 2>&1 || true
+if grep -q '^127\.0\.1\.1' /etc/hosts; then
+    sed -i "s/^127\.0\.1\.1.*/127.0.1.1\t$COMPUTER/" /etc/hosts
+else
+    printf '127.0.1.1\t%s\n' "$COMPUTER" >> /etc/hosts
+fi
+
+# ---- akaunti ----
 LIVE_USER=$(getent passwd 1000 | cut -d: -f1 || true)
 
-# Vikundi vilivyopo tu
 WANTED="sudo audio video netdev plugdev cdrom dip lpadmin bluetooth scanner"
 GRP=""
 for g in $WANTED; do
@@ -42,15 +66,20 @@ fi
 # Ondoa sudo bila password ya live-config
 rm -f /etc/sudoers.d/live
 
-# Zima autologin (lightdm.conf ina kipaumbele juu ya conf.d, kwa hiyo hariri zote mbili)
+# Autologin: zima mipangilio ya zamani (lightdm.conf ina kipaumbele juu ya conf.d), kisha weka chaguo la mtumiaji
 for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/*.conf; do
     [ -f "$f" ] && sed -i -E 's/^[[:space:]]*(autologin-user[A-Za-z-]*)[[:space:]]*=/#\1=/' "$f" || true
 done
 mkdir -p /etc/lightdm/lightdm.conf.d
-printf '[Seat:*]\nautologin-user=\n' > /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf
+rm -f /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf /etc/lightdm/lightdm.conf.d/99-uhuru-autologin.conf
+if [ "$AUTOLOGIN" = "yes" ]; then
+    printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$USERNAME" > /etc/lightdm/lightdm.conf.d/99-uhuru-autologin.conf
+else
+    printf '[Seat:*]\nautologin-user=\n' > /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf
+fi
 
 touch /var/lib/uhuru-setup.done
 
-# Anzisha upya login screen baada ya sekunde 2 ili mtumiaji aingie na akaunti yake
+# Anzisha upya login screen baada ya sekunde 2
 systemd-run --quiet --on-active=2 --unit=uhuru-relogin systemctl restart lightdm >/dev/null 2>&1 || true
 exit 0

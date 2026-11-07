@@ -1,14 +1,53 @@
 #!/bin/bash
-# Uhuru OS — skrini ya kwanza ya usajili (kama Windows OOBE).
+# Uhuru OS — usanidi wa kwanza (kama Windows OOBE): saa, jina la kompyuta, mtandao, akaunti.
 # Inaendeshwa kwenye live session pekee, mara moja.
 grep -q 'boot=live' /proc/cmdline || exit 0
 [ -e /var/lib/uhuru-setup.done ] && exit 0
 command -v zenity >/dev/null 2>&1 || exit 0
 
 TITLE="Uhuru OS - Karibu"
-z() { zenity --title="$TITLE" --width=420 "$@"; }
+z() { zenity --title="$TITLE" --width=440 "$@"; }
 
-z --info --text="<b>Karibu Uhuru OS</b>\n\nTengeneza akaunti yako. Jina na password uvyochagua ndivyo utakavyotumia kuingia kila wakati.\n\nImetengenezwa na Letema Group Tech." --ok-label="Anza" || true
+TZSEL="Africa/Dar_es_Salaam"
+COMPUTER="uhuru-pc"
+
+ask_tz() {
+    local pick
+    pick=$(z --list --radiolist --height=420 --text="Chagua eneo lako (saa):" \
+        --column="" --column="Eneo" --column="Nchi" --print-column=2 --hide-header \
+        TRUE  Africa/Dar_es_Salaam "Tanzania" \
+        FALSE Africa/Nairobi       "Kenya" \
+        FALSE Africa/Kampala       "Uganda" \
+        FALSE Africa/Kigali        "Rwanda" \
+        FALSE Africa/Lusaka        "Zambia" \
+        FALSE Africa/Maputo        "Msumbiji" \
+        FALSE Africa/Johannesburg  "Afrika Kusini" \
+        FALSE Africa/Lagos         "Nigeria" \
+        FALSE Europe/London        "Uingereza" \
+        FALSE Asia/Dubai           "Falme za Kiarabu" \
+        FALSE UTC                  "UTC") || return 0
+    [ -n "$pick" ] && TZSEL="$pick"
+}
+
+ask_computer() {
+    local name
+    while :; do
+        name=$(z --entry --text="Jina la kompyuta hii (herufi ndogo, namba na -):" --entry-text="$COMPUTER") || return 0
+        if printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9-]{0,30}$'; then COMPUTER="$name"; return 0; fi
+        z --error --text="Jina la kompyuta litumie herufi ndogo, namba na - tu (hadi 31)."
+    done
+}
+
+z --info --text="<b>Karibu Uhuru OS</b>\n\nTutafanya usanidi mfupi: eneo, jina la kompyuta, mtandao na akaunti yako.\n\nImetengenezwa na Letema Group Tech." --ok-label="Anza" || true
+
+ask_tz
+ask_computer
+
+if command -v nm-connection-editor >/dev/null 2>&1; then
+    if z --question --text="Unataka kuunganisha mtandao (Wi-Fi) sasa?\n\nUkimaliza, funga dirisha la mitandao." --ok-label="Ndiyo" --cancel-label="Baadaye"; then
+        nm-connection-editor
+    fi
+fi
 
 while :; do
     FULLNAME=$(z --entry --text="Jina lako kamili:") || continue
@@ -23,14 +62,23 @@ while :; do
     PASS2=$(z --password --text="Rudia password:") || continue
     [ "$PASS1" = "$PASS2" ] || { z --error --text="Password hazilingani. Jaribu tena."; continue; }
 
-    printf '%s\n%s\n%s\n' "$FULLNAME" "$USERNAME" "$PASS1" | sudo -n /usr/local/sbin/uhuru-create-user
+    AUTOLOGIN=no
+    if z --question --default-cancel --ok-label="Ndiyo" --cancel-label="Hapana (inashauriwa)" \
+        --text="Uingie moja kwa moja bila kuandika password kila kompyuta inapowashwa?\n\nHaishauriwi kama kompyuta inatumiwa na watu wengine."; then
+        AUTOLOGIN=yes
+    fi
+
+    printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$FULLNAME" "$USERNAME" "$PASS1" "$COMPUTER" "$TZSEL" "$AUTOLOGIN" \
+        | sudo -n /usr/local/sbin/uhuru-create-user
     RC=$?
     unset PASS1 PASS2
     case "$RC" in
-        0) z --info --text="Akaunti yako imetengenezwa.\n\nSasa utaelekezwa kwenye skrini ya kuingia. Ingia na jina na password uliyochagua."; exit 0 ;;
-        3) z --error --text="Jina hilo limeshatumika. Chagua jingine." ;;
+        0) z --info --text="Akaunti yako imetengenezwa.\n\nSasa utaelekezwa kwenye skrini ya kuingia." ; exit 0 ;;
         2) z --error --text="Jina la kuingia si sahihi." ;;
+        3) z --error --text="Jina hilo limeshatumika. Chagua jingine." ;;
         4) z --error --text="Password ni fupi mno." ;;
+        5) z --error --text="Jina la kompyuta si sahihi."; ask_computer ;;
+        6) z --error --text="Eneo si sahihi. Chagua tena."; ask_tz ;;
         *) z --error --text="Imeshindikana kutengeneza akaunti (kosa $RC). Jaribu tena." ;;
     esac
 done

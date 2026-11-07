@@ -1,0 +1,5 @@
+#!/bin/bash
+# Uhuru OS — dirisha la "Kuhusu"
+. /etc/os-release 2>/dev/null
+zenity --info --title="Kuhusu Uhuru OS" --width=440 --ok-label="Funga" \
+  --text="<b><big>${PRETTY_NAME:-Uhuru OS}</big></b>\n\nImetengenezwa na <b>Letema Group Tech</b>\n${HOME_URL}\n\nImejengwa juu ya Debian GNU/Linux ${VERSION_ID}\nKernel: $(uname -r)\nKompyuta: $(hostname)"

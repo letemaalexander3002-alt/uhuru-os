@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Letema Group Tech
+Comment=Tembelea tovuti yetu
+Exec=xdg-open https://www.letemagrouptech.lsicbusiness.online
+Icon=web-browser
+Terminal=false
