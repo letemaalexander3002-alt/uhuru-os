@@ -1,0 +1,36 @@
+#!/bin/bash
+# Uhuru OS — maandalizi ya live session. Inaendeshwa na uhuru-live-prep.service mapema wakati wa boot,
+# baada ya live-config na kabla ya login screen. Haifanyi kitu kwenye mfumo uliosakinishwa.
+R=${UHURU_TEST_ROOT:-}
+CMDLINE=${UHURU_CMDLINE:-/proc/cmdline}
+grep -q 'boot=live' "$CMDLINE" || exit 0
+[ -e "$R/var/lib/uhuru-setup.done" ] && exit 0
+
+BG="$R/usr/share/backgrounds/uhuru-os"
+TZNAME=Africa/Dar_es_Salaam
+
+# 1. Saa ya EAT (live-config huiweka UTC)
+if [ -f "$R/usr/share/zoneinfo/$TZNAME" ]; then
+    ln -sf "/usr/share/zoneinfo/$TZNAME" "$R/etc/localtime"
+    echo "$TZNAME" > "$R/etc/timezone"
+fi
+
+# 2. Akaunti ya live (UID 1000)
+LIVE_USER=${UHURU_TEST_LIVE_USER:-$(getent passwd 1000 | cut -d: -f1)}
+
+# 3. Skrini ya login yenye maelezo ya kuingia mara ya kwanza (kwa akaunti zinazojulikana pekee)
+case "$LIVE_USER" in
+    mtumiaji) HINT=uhuru-os-login-hint-mtumiaji.png ;;
+    user)     HINT=uhuru-os-login-hint-user.png ;;
+    *)        HINT=uhuru-os-login.png ;;
+esac
+[ -f "$BG/$HINT" ] && ln -sf "/usr/share/backgrounds/uhuru-os/$HINT" "$BG/login-current.png"
+
+# 4. Login screen ijaze jina la akaunti ya live kama mtumiaji wa mwisho
+LD_HOME=${UHURU_TEST_LD_HOME:-$(getent passwd lightdm | cut -d: -f6)}
+if [ -n "$LIVE_USER" ] && [ -n "$LD_HOME" ]; then
+    mkdir -p "$R$LD_HOME/.cache/lightdm-gtk-greeter"
+    printf '[greeter]\nlast-user=%s\n' "$LIVE_USER" > "$R$LD_HOME/.cache/lightdm-gtk-greeter/state"
+    chown -R lightdm:lightdm "$R$LD_HOME/.cache" 2>/dev/null || true
+fi
+exit 0

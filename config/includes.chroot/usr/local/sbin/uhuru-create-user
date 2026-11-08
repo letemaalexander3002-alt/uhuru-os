@@ -78,6 +78,21 @@ else
     printf '[Seat:*]\nautologin-user=\n' > /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf
 fi
 
+# Login screen: ficha akaunti ya live na ikumbuke akaunti mpya (vinginevyo inaonyesha jina la live lililofungwa)
+if [ -n "$LIVE_USER" ] && [ "$LIVE_USER" != "$USERNAME" ] && [ -f /etc/lightdm/users.conf ]; then
+    grep '^hidden-users=' /etc/lightdm/users.conf | grep -qw -- "$LIVE_USER" \
+        || sed -i "s/^hidden-users=.*/& $LIVE_USER/" /etc/lightdm/users.conf || true
+fi
+LD_HOME=$(getent passwd lightdm | cut -d: -f6 || true)
+if [ -n "$LD_HOME" ]; then
+    mkdir -p "$LD_HOME/.cache/lightdm-gtk-greeter"
+    printf '[greeter]\nlast-user=%s\n' "$USERNAME" > "$LD_HOME/.cache/lightdm-gtk-greeter/state"
+    chown -R lightdm:lightdm "$LD_HOME/.cache" 2>/dev/null || true
+fi
+
+# Ondoa maelezo ya "kuingia kwa mara ya kwanza" kwenye login screen (sasa mtumiaji ana akaunti yake)
+ln -sf /usr/share/backgrounds/uhuru-os/uhuru-os-login.png /usr/share/backgrounds/uhuru-os/login-current.png 2>/dev/null || true
+
 touch /var/lib/uhuru-setup.done
 
 # Anzisha upya login screen baada ya sekunde 2

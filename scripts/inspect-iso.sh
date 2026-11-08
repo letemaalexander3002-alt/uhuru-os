@@ -41,7 +41,10 @@ if [ -s "$W/fs.packages" ]; then
              network-manager-gnome mousepad; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "pakiti $p ipo"; else check FAIL "pakiti $p HAIPO"; fi
     done
-    for p in grub-efi-amd64 grub-efi-amd64-bin grub-efi-amd64-signed grub-pc grub-pc-bin shim-signed efibootmgr os-prober; do
+    for p in grub2-common grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed efibootmgr mokutil; do
+        if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "bootloader pkg $p ipo"; else check FAIL "bootloader pkg $p HAIPO (Calamares haitasakinisha)"; fi
+    done
+    for p in os-prober dosfstools grub-common; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check INFO "bootloader: $p ipo"; else check INFO "bootloader: $p haipo"; fi
     done
 else
@@ -70,7 +73,10 @@ for f in usr/local/bin/uhuru-setup usr/local/sbin/uhuru-create-user usr/local/bi
          etc/skel/Desktop/firefox-esr.desktop etc/skel/Desktop/chromium.desktop etc/skel/Desktop/xfce4-terminal.desktop \
          etc/skel/Desktop/thunar.desktop etc/skel/Desktop/letema-group-tech.desktop etc/skel/Desktop/Karibu-Uhuru-OS.txt \
          etc/skel/.config/xfce4/terminal/terminalrc etc/lightdm/lightdm-gtk-greeter.conf \
-         etc/chromium/policies/managed/uhuru-os.json etc/xdg/mimeapps.list; do
+         etc/chromium/policies/managed/uhuru-os.json etc/xdg/mimeapps.list \
+         usr/local/sbin/uhuru-live-prep usr/local/bin/uhuru-locker usr/local/bin/uhuru-greeter-setup \
+         etc/lightdm/lightdm.conf.d/50-uhuru.conf usr/share/backgrounds/uhuru-os/uhuru-os-login-hint-mtumiaji.png \
+         usr/share/backgrounds/uhuru-os/uhuru-os-login-hint-user.png; do
     if [ -e "$ROOT/$f" ]; then check PASS "faili lipo: $f"; else check FAIL "faili HALIPO: $f"; fi
 done
 for f in usr/local/bin/uhuru-setup usr/local/sbin/uhuru-create-user usr/local/bin/uhuru-about usr/local/bin/uhuru-wallpaper; do
@@ -88,6 +94,16 @@ say "--- issue"; cat "$ROOT/etc/issue" >> "$R" 2>&1
 say "--- motd"; cat "$ROOT/etc/motd" >> "$R" 2>&1
 say "--- hostname / timezone"; cat "$ROOT/etc/hostname" "$ROOT/etc/timezone" >> "$R" 2>&1
 say "--- GRUB_DISTRIBUTOR"; grep -n '^GRUB_DISTRIBUTOR' "$ROOT/etc/default/grub" >> "$R" 2>&1
+grep -q '^GRUB_DISTRIBUTOR="Uhuru OS"' "$ROOT/etc/default/grub" 2>/dev/null && check PASS "GRUB_DISTRIBUTOR ni Uhuru OS" || check FAIL "GRUB_DISTRIBUTOR si Uhuru OS (au /etc/default/grub haipo)"
+grep -q '^ID_LIKE=debian' "$ROOT/etc/os-release" 2>/dev/null && check PASS "os-release ina ID_LIKE=debian" || check FAIL "os-release haina ID_LIKE=debian"
+say "--- /etc/localtime"; readlink "$ROOT/etc/localtime" >> "$R" 2>&1
+[ -e "$ROOT/etc/systemd/system/multi-user.target.wants/uhuru-live-prep.service" ] && check PASS "huduma ya maandalizi (uhuru-live-prep) imewashwa" || check FAIL "uhuru-live-prep.service haijawashwa"
+say "--- login-current.png ->"; readlink "$ROOT/usr/share/backgrounds/uhuru-os/login-current.png" >> "$R" 2>&1
+readlink "$ROOT/usr/share/backgrounds/uhuru-os/login-current.png" 2>/dev/null | grep -q 'uhuru-os-login.png$' \
+    && check PASS "login-current.png ni ya kawaida (bila maelezo) kwenye ISO" || check FAIL "login-current.png si symlink ya uhuru-os-login.png"
+grep -q '^Exec=/usr/local/bin/uhuru-locker' "$ROOT/etc/xdg/autostart/light-locker.desktop" 2>/dev/null \
+    && check PASS "light-locker inaanzishwa kupitia uhuru-locker" || check FAIL "light-locker.desktop haitumii uhuru-locker"
+say "--- lightdm users.conf"; nc "$ROOT/etc/lightdm/users.conf" >> "$R" 2>&1
 grep -q 'Africa/Dar_es_Salaam' "$ROOT/etc/timezone" 2>/dev/null && check PASS "saa ya default ni Africa/Dar_es_Salaam" || check FAIL "saa si Africa/Dar_es_Salaam"
 grep -q 'UHURU_BANNER' "$ROOT/etc/skel/.bashrc" 2>/dev/null && check PASS "terminal ya Uhuru (bashrc) ipo" || check FAIL "bashrc haina block ya Uhuru"
 

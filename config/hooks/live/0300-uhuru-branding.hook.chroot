@@ -1,10 +1,13 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.2)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.4)
 # v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 # v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
 #        Firefox, About, firewall. Hatua 12 na 14 zinasimamisha build zikifeli; zingine ni best-effort.
 # v13.2: wallpaper 4 zinazozunguka, programu za msingi (Firefox, Chromium, Uhuru Terminal, Office...), default apps
+# v13.3: vifurushi vya GRUB/UEFI (ili Calamares isakinishe), ID_LIKE=debian, huduma ya saa ya EAT
+# v13.4: login isiyoshindwa: lock screen imezimwa kabla ya usajili, maelezo ya kuingia kwenye login screen,
+#        jina la live linajazwa, key auto-repeat imezimwa kwenye login
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -97,7 +100,7 @@ for f in $(find /usr/lib/live -type f 2>/dev/null); do
     fi
 done
 
-# 12. Password ya live user: "uhuru" (username inabaki "user")
+# 12. Password ya live user: "uhuru" (username ni ile ya live.cfg, mfano mtumiaji)
 #     live-config huweka password kwa hash ya DES crypt kwenye 0030-user-setup.
 #     Hash ya "live"  = 8Ab05sVQ4LLps  (chaguo-msingi ya Debian)
 #     Hash ya "uhuru" = 8Anb4IpaWQzBY  (perl -e 'print crypt("uhuru","8A")')
@@ -127,6 +130,13 @@ EOF
 else
     echo "WARNING: schema ya light-locker haipo; lock screen inatumia mipangilio ya default" >&2
 fi
+# Kabla mtumiaji hajajisajili, lock screen isiwashe (ingeomba password ambayo bado haijaundwa).
+# uhuru-locker huanzisha light-locker tu baada ya usajili, au kwenye mfumo uliosakinishwa.
+LL=/etc/xdg/autostart/light-locker.desktop
+if [ -f "$LL" ]; then
+    sed -i 's#^Exec=\(/usr/bin/\)\?light-locker#Exec=/usr/local/bin/uhuru-locker#' "$LL" || true
+    grep -q '^Exec=/usr/local/bin/uhuru-locker' "$LL" || echo "WARNING: light-locker.desktop haikubadilishwa (Exec ni tofauti)" >&2
+fi
 
 # 14. Wizard ya kujisajili (OOBE): hakikisha faili zipo na zinaweza kuendeshwa
 command -v zenity >/dev/null 2>&1 || { echo "ERROR: zenity haijasakinishwa (angalia config/package-lists/uhuru-setup.list.chroot)" >&2; exit 1; }
@@ -144,10 +154,27 @@ if [ -n "$OSR" ] && [ -f "$OSR" ]; then
            -e "s#^HOME_URL=.*#HOME_URL=\"$SITE\"#" \
            -e "s#^SUPPORT_URL=.*#SUPPORT_URL=\"$SITE\"#" \
            -e "s#^BUG_REPORT_URL=.*#BUG_REPORT_URL=\"$SITE\"#" "$OSR" || true
+    # zana nyingi hutegemea ID_LIKE kutambua mfumo unaotokana na Debian
+    grep -q '^ID_LIKE=' "$OSR" || echo 'ID_LIKE=debian' >> "$OSR"
 fi
 printf 'Uhuru OS 1.0 \\n \\l\n\n' > /etc/issue
 printf 'Uhuru OS 1.0\n' > /etc/issue.net
 printf '\nKaribu Uhuru OS 1.0\nImetengenezwa na Letema Group Tech - %s\n\n' "$SITE" > /etc/motd
+
+# 16a. Bootloader: vifurushi vya GRUB/UEFI ndani ya mfumo, ili Calamares iweze kusakinisha kwenye diski.
+#      (Bila hivi, hatua ya 'bootloader' ya Calamares inashindwa.) Jaribio la 1: seti kamili (Secure Boot).
+#      Jaribio la 2: seti ndogo. Zikishindwa zote mbili, build inasimama kwa makusudi.
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null 2>&1 || echo "WARNING: apt-get update imefeli; najaribu kusakinisha kwa orodha iliyopo" >&2
+if apt-get install -y --no-install-recommends grub2-common grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed efibootmgr mokutil; then
+    echo "Bootloader: seti kamili ya GRUB/UEFI (Secure Boot) imewekwa"
+elif apt-get install -y --no-install-recommends grub2-common grub-pc-bin grub-efi-amd64-bin efibootmgr; then
+    echo "WARNING: Secure Boot (shim-signed) haikusakinishwa; GRUB ya kawaida imewekwa" >&2
+else
+    echo "ERROR: vifurushi vya GRUB havikusakinishwa; Calamares isingeweza kusakinisha bootloader" >&2
+    exit 1
+fi
+command -v grub-install >/dev/null 2>&1 || { echo "ERROR: grub-install haipo baada ya kusakinisha" >&2; exit 1; }
 
 # 16. GRUB ya mfumo utakaosakinishwa: jina la distributor
 if [ -f /etc/default/grub ]; then
@@ -160,6 +187,26 @@ if [ -f "/usr/share/zoneinfo/$TZNAME" ]; then
     echo "$TZNAME" > /etc/timezone
     ln -sf "/usr/share/zoneinfo/$TZNAME" /etc/localtime
 fi
+
+# 17a. Maandalizi ya live session (huduma ya systemd, mapema wakati wa boot, baada ya live-config):
+#      saa ya EAT, skrini ya login yenye maelezo ya kuingia, na jina la akaunti ya live kujazwa kwenye login.
+cat > /etc/systemd/system/uhuru-live-prep.service <<'EOF'
+[Unit]
+Description=Uhuru OS live session preparation
+After=live-config.service
+Before=display-manager.service
+ConditionKernelCommandLine=boot=live
+ConditionPathExists=!/var/lib/uhuru-setup.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uhuru-live-prep
+
+[Install]
+WantedBy=multi-user.target
+EOF
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/uhuru-live-prep.service /etc/systemd/system/multi-user.target.wants/uhuru-live-prep.service
 
 # 18. Wallpaper ya desktop (desktop-base) na login screen (lightdm-gtk-greeter)
 BG_DIR=/usr/share/backgrounds/uhuru-os
@@ -191,9 +238,11 @@ else
     echo "WARNING: wallpaper ya Uhuru haipo: $WP_PNG" >&2
 fi
 if [ -d /etc/lightdm ] && [ -f "$LOGIN_PNG" ]; then
+    # login-current.png ni symlink: kwenye mfumo uliosakinishwa inabaki bila maelezo; uhuru-live-prep inaibadilisha kwenye live pekee
+    ln -sf "$LOGIN_PNG" "$BG_DIR/login-current.png"
     cat > /etc/lightdm/lightdm-gtk-greeter.conf <<EOF
 [greeter]
-background=$LOGIN_PNG
+background=$BG_DIR/login-current.png
 user-background=false
 clock-format=%a %d %b, %H:%M
 indicators=~host;~spacer;~clock;~spacer;~language;~session;~a11y;~power
@@ -223,7 +272,7 @@ EOF
 done
 
 # 20. Launchers na Desktop: ruhusa
-chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper 2>/dev/null || true
+chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper /usr/local/bin/uhuru-locker /usr/local/bin/uhuru-greeter-setup /usr/local/sbin/uhuru-live-prep 2>/dev/null || true
 [ -f /etc/skel/Desktop/letema-group-tech.desktop ] && chmod 0755 /etc/skel/Desktop/letema-group-tech.desktop || true
 
 # 21. Firewall (ufw) iwashwe kwa default
@@ -291,4 +340,4 @@ for app in firefox-esr chromium xfce4-terminal thunar; do
 done
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13.2): imekamilika."
+echo "Uhuru OS branding hook (v13.4): imekamilika."

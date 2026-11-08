@@ -5,6 +5,9 @@ grep -q 'boot=live' /proc/cmdline || exit 0
 [ -e /var/lib/uhuru-setup.done ] && exit 0
 command -v zenity >/dev/null 2>&1 || exit 0
 
+# Kwenye VM polepole herufi hurudiwa zenyewe (key auto-repeat) na password huandikwa vibaya: izime wakati wa usajili
+if command -v xset >/dev/null 2>&1; then xset r off 2>/dev/null; trap 'xset r on 2>/dev/null' EXIT; fi
+
 TITLE="Uhuru OS - Karibu"
 z() { zenity --title="$TITLE" --width=440 "$@"; }
 
@@ -62,6 +65,12 @@ while :; do
     PASS2=$(z --password --text="Rudia password:") || continue
     [ "$PASS1" = "$PASS2" ] || { z --error --text="Password hazilingani. Jaribu tena."; continue; }
 
+    # Kuhakikisha hukukosea: onyesha idadi ya herufi, na uone password ukitaka
+    if z --question --no-markup --ok-label="Nionyeshe" --cancel-label="Endelea" \
+        --text="Password yako ina herufi ${#PASS1}.\n\nUnataka kuiona ili kuhakikisha uliandika sahihi?"; then
+        z --info --no-markup --ok-label="Sawa" --text="Password yako ni:\n\n$PASS1\n\nIkumbuke au iandike mahali salama."
+    fi
+
     AUTOLOGIN=no
     if z --question --default-cancel --ok-label="Ndiyo" --cancel-label="Hapana (inashauriwa)" \
         --text="Uingie moja kwa moja bila kuandika password kila kompyuta inapowashwa?\n\nHaishauriwi kama kompyuta inatumiwa na watu wengine."; then
@@ -73,7 +82,7 @@ while :; do
     RC=$?
     unset PASS1 PASS2
     case "$RC" in
-        0) z --info --text="Akaunti yako imetengenezwa.\n\nSasa utaelekezwa kwenye skrini ya kuingia." ; exit 0 ;;
+        0) z --info --text="Akaunti yako imetengenezwa.\n\nJina lako la kuingia: <b>$USERNAME</b>\n\nSasa utaelekezwa kwenye skrini ya kuingia. Andika jina hilo na password uliyochagua." ; exit 0 ;;
         2) z --error --text="Jina la kuingia si sahihi." ;;
         3) z --error --text="Jina hilo limeshatumika. Chagua jingine." ;;
         4) z --error --text="Password ni fupi mno." ;;

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Uhuru OS — inaendeshwa na LightDM kabla ya login screen kuanza.
+# Inazima key auto-repeat: kwenye VM polepole herufi hurudiwa zenyewe na password huonekana si sahihi.
+command -v xset >/dev/null 2>&1 && xset r off 2>/dev/null
+exit 0
