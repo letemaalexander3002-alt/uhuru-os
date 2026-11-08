@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.4)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.5)
 # v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 # v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
@@ -8,6 +8,7 @@
 # v13.3: vifurushi vya GRUB/UEFI (ili Calamares isakinishe), ID_LIKE=debian, huduma ya saa ya EAT
 # v13.4: login isiyoshindwa: lock screen imezimwa kabla ya usajili, maelezo ya kuingia kwenye login screen,
 #        jina la live linajazwa, key auto-repeat imezimwa kwenye login
+# v13.5: /etc/default/grub inaundwa (GRUB_DISTRIBUTOR), uhuru-selftest kwa ukaguzi wa login kwenye CI
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -176,10 +177,28 @@ else
 fi
 command -v grub-install >/dev/null 2>&1 || { echo "ERROR: grub-install haipo baada ya kusakinisha" >&2; exit 1; }
 
-# 16. GRUB ya mfumo utakaosakinishwa: jina la distributor
-if [ -f /etc/default/grub ]; then
-    sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Uhuru OS"/' /etc/default/grub || true
+# 16. /etc/default/grub na jina la distributor. Kifurushi cha GRUB hakiundi faili hili kwenye chroot, kwa hiyo
+#     tunalitengeneza (kutoka kwa template ya GRUB ikiwepo), ili Calamares na grub-mkconfig vitumie "Uhuru OS".
+if [ ! -f /etc/default/grub ]; then
+    if [ -f /usr/share/grub/default/grub ]; then
+        cp /usr/share/grub/default/grub /etc/default/grub
+    else
+        cat > /etc/default/grub <<'EOF'
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR="Uhuru OS"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX=""
+EOF
+    fi
 fi
+if grep -q '^GRUB_DISTRIBUTOR=' /etc/default/grub; then
+    sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="Uhuru OS"/' /etc/default/grub
+else
+    echo 'GRUB_DISTRIBUTOR="Uhuru OS"' >> /etc/default/grub
+fi
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"/' /etc/default/grub
+grep -q '^GRUB_DISTRIBUTOR="Uhuru OS"' /etc/default/grub || { echo "ERROR: GRUB_DISTRIBUTOR haikuwekwa" >&2; exit 1; }
 
 # 17. Saa ya Afrika Mashariki kama chaguo-msingi (mtumiaji anaweza kuchagua kingine kwenye wizard)
 TZNAME=Africa/Dar_es_Salaam
@@ -272,7 +291,7 @@ EOF
 done
 
 # 20. Launchers na Desktop: ruhusa
-chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper /usr/local/bin/uhuru-locker /usr/local/bin/uhuru-greeter-setup /usr/local/sbin/uhuru-live-prep 2>/dev/null || true
+chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper /usr/local/bin/uhuru-locker /usr/local/bin/uhuru-greeter-setup /usr/local/bin/uhuru-selftest /usr/local/sbin/uhuru-live-prep 2>/dev/null || true
 [ -f /etc/skel/Desktop/letema-group-tech.desktop ] && chmod 0755 /etc/skel/Desktop/letema-group-tech.desktop || true
 
 # 21. Firewall (ufw) iwashwe kwa default
@@ -340,4 +359,4 @@ for app in firefox-esr chromium xfce4-terminal thunar; do
 done
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13.4): imekamilika."
+echo "Uhuru OS branding hook (v13.5): imekamilika."

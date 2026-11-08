@@ -41,8 +41,11 @@ if [ -s "$W/fs.packages" ]; then
              network-manager-gnome mousepad; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "pakiti $p ipo"; else check FAIL "pakiti $p HAIPO"; fi
     done
-    for p in grub2-common grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed efibootmgr mokutil; do
+    for p in grub2-common grub-pc-bin grub-efi-amd64-bin efibootmgr mokutil; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "bootloader pkg $p ipo"; else check FAIL "bootloader pkg $p HAIPO (Calamares haitasakinisha)"; fi
+    done
+    for p in grub-efi-amd64-signed shim-signed; do
+        if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "Secure Boot pkg $p ipo"; else check INFO "Secure Boot pkg $p haipo (Secure Boot haitafanya kazi; BIOS/UEFI ya kawaida ni sawa)"; fi
     done
     for p in os-prober dosfstools grub-common; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check INFO "bootloader: $p ipo"; else check INFO "bootloader: $p haipo"; fi
@@ -74,12 +77,12 @@ for f in usr/local/bin/uhuru-setup usr/local/sbin/uhuru-create-user usr/local/bi
          etc/skel/Desktop/thunar.desktop etc/skel/Desktop/letema-group-tech.desktop etc/skel/Desktop/Karibu-Uhuru-OS.txt \
          etc/skel/.config/xfce4/terminal/terminalrc etc/lightdm/lightdm-gtk-greeter.conf \
          etc/chromium/policies/managed/uhuru-os.json etc/xdg/mimeapps.list \
-         usr/local/sbin/uhuru-live-prep usr/local/bin/uhuru-locker usr/local/bin/uhuru-greeter-setup \
+         usr/local/sbin/uhuru-live-prep usr/local/bin/uhuru-locker usr/local/bin/uhuru-greeter-setup usr/local/bin/uhuru-selftest \
          etc/lightdm/lightdm.conf.d/50-uhuru.conf usr/share/backgrounds/uhuru-os/uhuru-os-login-hint-mtumiaji.png \
          usr/share/backgrounds/uhuru-os/uhuru-os-login-hint-user.png; do
     if [ -e "$ROOT/$f" ]; then check PASS "faili lipo: $f"; else check FAIL "faili HALIPO: $f"; fi
 done
-for f in usr/local/bin/uhuru-setup usr/local/sbin/uhuru-create-user usr/local/bin/uhuru-about usr/local/bin/uhuru-wallpaper; do
+for f in usr/local/bin/uhuru-setup usr/local/sbin/uhuru-create-user usr/local/bin/uhuru-about usr/local/bin/uhuru-wallpaper usr/local/bin/uhuru-selftest; do
     if [ -f "$ROOT/$f" ]; then
         [ -x "$ROOT/$f" ] && check PASS "inaweza kuendeshwa: $f" || check FAIL "HAIENDESHEKI (chmod): $f"
         bash -n "$ROOT/$f" 2>/dev/null && check PASS "syntax sawa: $f" || check FAIL "syntax mbaya: $f"
@@ -97,12 +100,18 @@ say "--- GRUB_DISTRIBUTOR"; grep -n '^GRUB_DISTRIBUTOR' "$ROOT/etc/default/grub"
 grep -q '^GRUB_DISTRIBUTOR="Uhuru OS"' "$ROOT/etc/default/grub" 2>/dev/null && check PASS "GRUB_DISTRIBUTOR ni Uhuru OS" || check FAIL "GRUB_DISTRIBUTOR si Uhuru OS (au /etc/default/grub haipo)"
 grep -q '^ID_LIKE=debian' "$ROOT/etc/os-release" 2>/dev/null && check PASS "os-release ina ID_LIKE=debian" || check FAIL "os-release haina ID_LIKE=debian"
 say "--- /etc/localtime"; readlink "$ROOT/etc/localtime" >> "$R" 2>&1
-[ -e "$ROOT/etc/systemd/system/multi-user.target.wants/uhuru-live-prep.service" ] && check PASS "huduma ya maandalizi (uhuru-live-prep) imewashwa" || check FAIL "uhuru-live-prep.service haijawashwa"
+if [ -L "$ROOT/etc/systemd/system/multi-user.target.wants/uhuru-live-prep.service" ] && [ -f "$ROOT/etc/systemd/system/uhuru-live-prep.service" ]; then
+    check PASS "huduma ya maandalizi (uhuru-live-prep) imewashwa"
+else
+    check FAIL "uhuru-live-prep.service haijawashwa"
+fi
 say "--- login-current.png ->"; readlink "$ROOT/usr/share/backgrounds/uhuru-os/login-current.png" >> "$R" 2>&1
 readlink "$ROOT/usr/share/backgrounds/uhuru-os/login-current.png" 2>/dev/null | grep -q 'uhuru-os-login.png$' \
     && check PASS "login-current.png ni ya kawaida (bila maelezo) kwenye ISO" || check FAIL "login-current.png si symlink ya uhuru-os-login.png"
 grep -q '^Exec=/usr/local/bin/uhuru-locker' "$ROOT/etc/xdg/autostart/light-locker.desktop" 2>/dev/null \
     && check PASS "light-locker inaanzishwa kupitia uhuru-locker" || check FAIL "light-locker.desktop haitumii uhuru-locker"
+say "--- dpkg status: shim-signed / grub-efi-amd64-signed"
+for p in shim-signed grub-efi-amd64-signed; do grep -A2 "^Package: $p$" "$ROOT/var/lib/dpkg/status" >> "$R" 2>&1 || say "$p: haipo kwenye dpkg status"; done
 say "--- lightdm users.conf"; nc "$ROOT/etc/lightdm/users.conf" >> "$R" 2>&1
 grep -q 'Africa/Dar_es_Salaam' "$ROOT/etc/timezone" 2>/dev/null && check PASS "saa ya default ni Africa/Dar_es_Salaam" || check FAIL "saa si Africa/Dar_es_Salaam"
 grep -q 'UHURU_BANNER' "$ROOT/etc/skel/.bashrc" 2>/dev/null && check PASS "terminal ya Uhuru (bashrc) ipo" || check FAIL "bashrc haina block ya Uhuru"

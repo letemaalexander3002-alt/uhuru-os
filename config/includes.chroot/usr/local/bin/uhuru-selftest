@@ -1,0 +1,33 @@
+#!/bin/bash
+# Uhuru OS — ukaguzi wa haraka wa mfumo.
+#   uhuru-selftest              onyesha ripoti kwenye skrini
+#   uhuru-selftest <password>   (kwa CI) tumia sudo na uandike ripoti kwenye serial console
+OUT=$(mktemp)
+PW="$1"
+SUDO=""
+if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo -n"
+    [ -n "$PW" ] && printf '%s\n' "$PW" | sudo -S -v -p '' >/dev/null 2>&1
+fi
+accounts=$(getent passwd | awk -F: '$3>=1000 && $3<60000{print $1}' | tr '\n' ' ')
+{
+    echo "=== UHURU-SELFTEST BEGIN ==="
+    echo "user: $(id -un) uid=$(id -u) groups=$(id -Gn)"
+    echo "host: $(hostname)  tz: $(cat /etc/timezone 2>/dev/null)  date: $(date '+%F %T %Z')"
+    grep -E '^(PRETTY_NAME|ID|ID_LIKE)=' /etc/os-release 2>/dev/null
+    echo "session: ${XDG_CURRENT_DESKTOP:-?} / ${DESKTOP_SESSION:-?}"
+    echo "setup.done: $([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)"
+    echo "accounts: $accounts"
+    for u in $accounts; do echo "  $u: $($SUDO passwd -S "$u" 2>/dev/null || echo 'passwd -S inahitaji sudo')"; done
+    echo "wallpaper-rotate: $(pgrep -fc uhuru-wallpaper) michakato"
+    echo "light-locker: $(pgrep -c light-locker) michakato"
+    echo "grub: $(command -v grub-install >/dev/null 2>&1 && echo grub-install-ipo || echo grub-install-haipo)"
+    echo "desktop: $(ls ~/Desktop 2>/dev/null | tr '\n' ' ')"
+    echo "=== UHURU-SELFTEST END ==="
+} > "$OUT" 2>&1
+if [ -n "$PW" ] && [ -n "$SUDO" ]; then
+    $SUDO sh -c "cat '$OUT' > /dev/ttyS0" 2>/dev/null
+else
+    cat "$OUT"
+fi
+rm -f "$OUT"
