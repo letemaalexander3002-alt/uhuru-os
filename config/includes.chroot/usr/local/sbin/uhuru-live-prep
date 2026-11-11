@@ -33,4 +33,10 @@ if [ -n "$LIVE_USER" ] && [ -n "$LD_HOME" ]; then
     printf '[greeter]\nlast-user=%s\n' "$LIVE_USER" > "$R$LD_HOME/.cache/lightdm-gtk-greeter/state"
     chown -R lightdm:lightdm "$R$LD_HOME/.cache" 2>/dev/null || true
 fi
+# 5. Ingia moja kwa moja kwenye akaunti ya live hadi mtumiaji ajisajili: mara ya kwanza hakuna password ya kuandika.
+#    (Wizard inaondoa mpangilio huu mara akaunti ya mtumiaji inapotengenezwa.)
+if [ -n "$LIVE_USER" ]; then
+    mkdir -p "$R/etc/lightdm/lightdm.conf.d"
+    printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$LIVE_USER" > "$R/etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf"
+fi
 exit 0

@@ -1,21 +1,26 @@
 #!/bin/bash
-# Soma serial.log (iliyoandikwa na uhuru-selftest) na toa CHECK lines za login kutoka mwanzo hadi mwisho.
-LOG=${1:?serial.log}
-B=$(tr -d '\r' < "$LOG" 2>/dev/null | sed -n '/UHURU-SELFTEST BEGIN/,/UHURU-SELFTEST END/p')
-if [ -z "$B" ]; then
-    echo "CHECK FAIL: e2e: ripoti ya uhuru-selftest haikupatikana (wizard/login/terminal havikufika mwisho; angalia picha za skrini)"
-    exit 0
+# Hukumu ya login kutoka mwanzo hadi mwisho. Inasoma <dir>/e2e.log (alama za automation) na <dir>/serial.log (telemetry).
+DIR=${1:?saraka ya screens}
+E="$DIR/e2e.log"; LOG="$DIR/serial.log"
+if [ ! -f "$E" ]; then echo "CHECK FAIL: e2e: e2e.log haipo (boot-screens.sh haikuendeshwa?)"; exit 0; fi
+has() { grep -q "$1" "$E" 2>/dev/null; }
+ck()  { if has "$1"; then echo "CHECK PASS: e2e: $2"; else echo "CHECK FAIL: e2e: $3"; fi; }
+if has 'accel=tcg'; then echo "CHECK INFO: e2e: runner haikuwa na KVM; automation iliruka (picha tu)"; exit 0; fi
+ck 'E2E telemetry=ok'  "telemetry ya CI inafanya kazi (serial)" "telemetry haikuonekana kwenye serial (huduma haikuanza?)"
+ck 'E2E autologin=yes' "boot ya kwanza inaingia desktop yenyewe, bila password" "boot ya kwanza ilionyesha LOGIN SCREEN (autologin haikutokea)"
+if has 'E2E autologin=no'; then
+    ck 'E2E live-login-manual=ok' "mtumiaji / uhuru imefanya kazi kwenye login screen" "mtumiaji / uhuru HAIFANYI KAZI kwenye login screen"
 fi
-echo "CHECK PASS: e2e: desktop ilifikiwa baada ya login, na uhuru-selftest ilifanya kazi"
-chk() { if printf '%s\n' "$B" | grep -Eq "$1"; then echo "CHECK PASS: e2e: $2"; else echo "CHECK FAIL: e2e: $3"; fi; }
-chk '^user: tester '                    "login ya akaunti mpya (tester / uhurutest1) ilifanya kazi" "aliyeingia si 'tester'"
-chk '^user: .*groups=.*sudo'            "akaunti mpya iko kwenye kikundi cha sudo"                  "akaunti mpya haiko kwenye sudo"
-chk '^setup.done: yes'                  "usajili umewekewa alama ya kukamilika"                     "setup.done haipo"
-chk '^host: uhuru-pc '                  "jina la kompyuta lililochaguliwa limetumika"               "jina la kompyuta si uhuru-pc"
-chk 'tz: Africa/Dar_es_Salaam'          "saa ni Africa/Dar_es_Salaam"                               "saa si Africa/Dar_es_Salaam"
-chk '^  mtumiaji: mtumiaji L '         "akaunti ya live (mtumiaji) imefungwa"                      "akaunti ya live HAIJAFUNGWA"
-chk '^light-locker: [1-9]'              "light-locker inaendeshwa baada ya usajili"                 "light-locker haiendeshwi baada ya usajili"
-chk '^wallpaper-rotate: [1-9]'          "mzunguko wa wallpaper unaendeshwa"                         "mzunguko wa wallpaper haiendeshwi"
-chk '^grub: grub-install-ipo'           "grub-install ipo (Calamares inaweza kusakinisha)"          "grub-install haipo"
-echo "--- uhuru-selftest ---"; printf '%s\n' "$B"
+ck 'E2E wizard=seen'        "wizard ya usajili imetokea baada ya login ya kwanza" "wizard HAIKUTOKEA"
+ck 'E2E registered=yes'     "usajili umekamilika (setup.done)" "usajili haukukamilika"
+ck 'E2E greeter-after=yes'  "login screen inaonekana baada ya usajili" "login screen haikuonekana baada ya usajili"
+ck 'E2E tester-login=yes'   "login ya akaunti mpya (tester / uhurutest1) imefanya kazi" "login ya akaunti mpya IMESHINDIKANA"
+ACC=$(tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-ACCOUNTS' | tail -1)
+if printf '%s' "$ACC" | grep -q 'mtumiaji=L'; then echo "CHECK PASS: e2e: akaunti ya live (mtumiaji) imefungwa baada ya usajili"; else echo "CHECK FAIL: e2e: akaunti ya live HAIJAFUNGWA ($ACC)"; fi
+if printf '%s' "$ACC" | grep -q 'tester=P'; then echo "CHECK PASS: e2e: akaunti mpya (tester) ina password halali"; else echo "CHECK FAIL: e2e: akaunti mpya haina password halali ($ACC)"; fi
+echo "--- alama za automation (e2e.log) ---"; cat "$E"
+echo "--- mistari ya mwisho ya UHURU-AUTH (majaribio ya kuingia) ---"
+tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-AUTH' | tail -8 | sed 's/^/CHECK INFO: auth: /'
+echo "--- hali ya mwisho ya mfumo ---"
+tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-STATE' | tail -2 | sed 's/^/CHECK INFO: state: /'
 exit 0

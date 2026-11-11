@@ -71,7 +71,7 @@ for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/*.conf; do
     [ -f "$f" ] && sed -i -E 's/^[[:space:]]*(autologin-user[A-Za-z-]*)[[:space:]]*=/#\1=/' "$f" || true
 done
 mkdir -p /etc/lightdm/lightdm.conf.d
-rm -f /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf /etc/lightdm/lightdm.conf.d/99-uhuru-autologin.conf
+rm -f /etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf /etc/lightdm/lightdm.conf.d/99-uhuru-noautologin.conf /etc/lightdm/lightdm.conf.d/99-uhuru-autologin.conf
 if [ "$AUTOLOGIN" = "yes" ]; then
     printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$USERNAME" > /etc/lightdm/lightdm.conf.d/99-uhuru-autologin.conf
 else

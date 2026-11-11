@@ -18,4 +18,7 @@ lb config noauto \
   --memtest none \
   --bootappend-live "boot=live components username=mtumiaji hostname=uhuru-os locales=sw_TZ.UTF-8 keyboard-layouts=us user-default-password=uhuru quiet splash console=tty0 console=ttyS0,115200n8" \
   --iso-volume "UHURU_OS" \
+  --iso-application "Uhuru OS" \
+  --iso-publisher "Letema Group Tech; https://www.letemagrouptech.lsicbusiness.online" \
+  --iso-preparer "Letema Group Tech" \
   "${@}"

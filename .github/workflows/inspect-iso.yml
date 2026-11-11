@@ -54,7 +54,7 @@ jobs:
         run: bash scripts/boot-screens.sh "$(ls iso/*.iso | head -1)" out/screens
 
       - name: Matokeo ya login kutoka mwanzo hadi mwisho (e2e)
-        run: bash scripts/e2e-verdict.sh out/screens/serial.log | tee -a out/report.txt
+        run: bash scripts/e2e-verdict.sh out/screens | tee -a out/report.txt
 
       - name: Pakia ripoti na picha
         if: always()

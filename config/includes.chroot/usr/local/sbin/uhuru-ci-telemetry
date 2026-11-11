@@ -1,0 +1,27 @@
+#!/bin/bash
+# Uhuru OS — telemetry ya CI: inaandika hali ya mfumo kwenye serial console kila sekunde 5.
+# Inafanya kazi TU kwenye QEMU ya CI (QEMU -smbios type=1,serial=UHURU_CI). Kwenye kompyuta halisi inatoka mara moja.
+DMI=${UHURU_TEST_DMI:-/sys/class/dmi/id/product_serial}
+SERIAL=${UHURU_TEST_SERIAL:-/dev/ttyS0}
+LOOPS=${UHURU_TEST_LOOPS:-0}
+grep -q 'UHURU_CI' "$DMI" 2>/dev/null || exit 0
+exec >"$SERIAL" 2>&1
+n=0
+while :; do
+    n=$((n+1))
+    sess=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{printf "%s,", $3}')
+    printf 'UHURU-STATE n=%s sessions=%s zenity=%s greeter=%s xfce=%s locker=%s done=%s autologin=%s\n' \
+        "$n" "$sess" "$(pgrep -xc zenity)" "$(pgrep -fc lightdm-gtk-greeter)" "$(pgrep -xc xfce4-session)" \
+        "$(pgrep -xc light-locker)" "$([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)" \
+        "$(grep -rhs '^autologin-user=' /etc/lightdm/ | tr '\n' '|')"
+    if [ $((n % 4)) -eq 1 ]; then
+        printf 'UHURU-ACCOUNTS'
+        for u in $(getent passwd | awk -F: '$3>=1000 && $3<60000{print $1}'); do
+            printf ' %s=%s' "$u" "$(passwd -S "$u" 2>/dev/null | awk '{print $2}')"
+        done
+        printf '\n'
+        journalctl -b -q --no-pager 2>/dev/null | grep -E 'pam_unix\(lightdm|authentication failure|uhuru-create-user' | tail -4 | sed 's/^/UHURU-AUTH /'
+    fi
+    [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ] && exit 0
+    sleep ${UHURU_TEST_SLEEP:-5}
+done

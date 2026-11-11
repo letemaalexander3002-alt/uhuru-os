@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.5)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.6)
 # v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 # v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
@@ -9,6 +9,7 @@
 # v13.4: login isiyoshindwa: lock screen imezimwa kabla ya usajili, maelezo ya kuingia kwenye login screen,
 #        jina la live linajazwa, key auto-repeat imezimwa kwenye login
 # v13.5: /etc/default/grub inaundwa (GRUB_DISTRIBUTOR), uhuru-selftest kwa ukaguzi wa login kwenye CI
+# v13.6: autologin ya live hadi usajili (hakuna password mara ya kwanza), telemetry ya CI kwenye serial
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -227,6 +228,23 @@ EOF
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/uhuru-live-prep.service /etc/systemd/system/multi-user.target.wants/uhuru-live-prep.service
 
+# 17b. Telemetry ya CI: inaandika hali ya mfumo kwenye serial. Haifanyi kitu kwenye kompyuta halisi
+#      (inahitaji QEMU -smbios serial=UHURU_CI), kwa hiyo ni salama kuiacha kwenye ISO ya kawaida.
+cat > /etc/systemd/system/uhuru-ci-telemetry.service <<'EOF'
+[Unit]
+Description=Uhuru OS CI telemetry (inatumika tu kwenye QEMU ya CI)
+After=live-config.service
+ConditionPathExists=/sys/class/dmi/id/product_serial
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/uhuru-ci-telemetry
+
+[Install]
+WantedBy=multi-user.target
+EOF
+ln -sf /etc/systemd/system/uhuru-ci-telemetry.service /etc/systemd/system/multi-user.target.wants/uhuru-ci-telemetry.service
+
 # 18. Wallpaper ya desktop (desktop-base) na login screen (lightdm-gtk-greeter)
 BG_DIR=/usr/share/backgrounds/uhuru-os
 WP_PNG="$BG_DIR/uhuru-os-wallpaper-1.png"
@@ -291,7 +309,7 @@ EOF
 done
 
 # 20. Launchers na Desktop: ruhusa
-chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper /usr/local/bin/uhuru-locker /usr/local/bin/uhuru-greeter-setup /usr/local/bin/uhuru-selftest /usr/local/sbin/uhuru-live-prep 2>/dev/null || true
+chmod 0755 /usr/local/bin/uhuru-about /usr/local/bin/uhuru-wallpaper /usr/local/bin/uhuru-locker /usr/local/bin/uhuru-greeter-setup /usr/local/bin/uhuru-selftest /usr/local/sbin/uhuru-live-prep /usr/local/sbin/uhuru-ci-telemetry 2>/dev/null || true
 [ -f /etc/skel/Desktop/letema-group-tech.desktop ] && chmod 0755 /etc/skel/Desktop/letema-group-tech.desktop || true
 
 # 21. Firewall (ufw) iwashwe kwa default
@@ -359,4 +377,4 @@ for app in firefox-esr chromium xfce4-terminal thunar; do
 done
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13.5): imekamilika."
+echo "Uhuru OS branding hook (v13.6): imekamilika."
