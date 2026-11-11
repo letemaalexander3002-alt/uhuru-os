@@ -64,7 +64,7 @@ if [ -n "$LIVE_USER" ] && [ "$LIVE_USER" != "$USERNAME" ]; then
 fi
 
 # Ondoa sudo bila password ya live-config
-rm -f /etc/sudoers.d/live
+rm -f /etc/sudoers.d/live /etc/sudoers.d/uhuru-live
 
 # Autologin: zima mipangilio ya zamani (lightdm.conf ina kipaumbele juu ya conf.d), kisha weka chaguo la mtumiaji
 for f in /etc/lightdm/lightdm.conf /etc/lightdm/lightdm.conf.d/*.conf; do

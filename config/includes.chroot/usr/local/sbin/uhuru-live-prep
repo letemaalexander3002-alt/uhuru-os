@@ -39,4 +39,17 @@ if [ -n "$LIVE_USER" ]; then
     mkdir -p "$R/etc/lightdm/lightdm.conf.d"
     printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$LIVE_USER" > "$R/etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf"
 fi
+# 6. Mruhusu akaunti ya live kuendesha helper ya usajili kupitia sudo bila password
+#    (haitegemei sudoers ya live-config; ruhusa ni kwa helper hiyo pekee)
+if [ -n "$LIVE_USER" ] && printf '%s' "$LIVE_USER" | grep -Eq '^[a-z][a-z0-9_-]*$'; then
+    mkdir -p "$R/etc/sudoers.d"
+    SF="$R/etc/sudoers.d/uhuru-live"
+    printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/uhuru-create-user\n' "$LIVE_USER" > "$SF.tmp"
+    chmod 0440 "$SF.tmp"
+    if [ -n "$R" ] || ! command -v visudo >/dev/null 2>&1 || visudo -cf "$SF.tmp" >/dev/null 2>&1; then
+        mv "$SF.tmp" "$SF"
+    else
+        rm -f "$SF.tmp"
+    fi
+fi
 exit 0

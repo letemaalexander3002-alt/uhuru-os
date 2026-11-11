@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.6)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.7)
 # v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 # v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
@@ -10,6 +10,7 @@
 #        jina la live linajazwa, key auto-repeat imezimwa kwenye login
 # v13.5: /etc/default/grub inaundwa (GRUB_DISTRIBUTOR), uhuru-selftest kwa ukaguzi wa login kwenye CI
 # v13.6: autologin ya live hadi usajili (hakuna password mara ya kwanza), telemetry ya CI kwenye serial
+# v13.7: CHANZO CHA LOGIN KUSHINDWA: user-setup haikuwepo (apt-recommends false), kwa hiyo live-config haikuunda akaunti ya live
 set -e
 
 THEME=/usr/share/plymouth/themes/uhuru-os/uhuru-os.plymouth
@@ -141,6 +142,8 @@ if [ -f "$LL" ]; then
 fi
 
 # 14. Wizard ya kujisajili (OOBE): hakikisha faili zipo na zinaweza kuendeshwa
+# Bila kifurushi 'user-setup', live-config HAIUNDI akaunti ya live (build ina --apt-recommends false), na hakuna anayeweza kuingia.
+dpkg -s user-setup >/dev/null 2>&1 || { echo "ERROR: user-setup haipo; akaunti ya live isingeundwa (angalia config/package-lists/uhuru-live.list.chroot)" >&2; exit 1; }
 command -v zenity >/dev/null 2>&1 || { echo "ERROR: zenity haijasakinishwa (angalia config/package-lists/uhuru-setup.list.chroot)" >&2; exit 1; }
 for f in /usr/local/bin/uhuru-setup /usr/local/sbin/uhuru-create-user /etc/xdg/autostart/uhuru-setup.desktop; do
     [ -f "$f" ] || { echo "ERROR: $f haipo (angalia config/includes.chroot)" >&2; exit 1; }
@@ -377,4 +380,4 @@ for app in firefox-esr chromium xfce4-terminal thunar; do
 done
 
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13.6): imekamilika."
+echo "Uhuru OS branding hook (v13.7): imekamilika."

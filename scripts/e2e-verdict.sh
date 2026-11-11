@@ -7,6 +7,8 @@ has() { grep -q "$1" "$E" 2>/dev/null; }
 ck()  { if has "$1"; then echo "CHECK PASS: e2e: $2"; else echo "CHECK FAIL: e2e: $3"; fi; }
 if has 'accel=tcg'; then echo "CHECK INFO: e2e: runner haikuwa na KVM; automation iliruka (picha tu)"; exit 0; fi
 ck 'E2E telemetry=ok'  "telemetry ya CI inafanya kazi (serial)" "telemetry haikuonekana kwenye serial (huduma haikuanza?)"
+FIRST=$(tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-ACCOUNTS' | head -1)
+if printf '%s' "$FIRST" | grep -q 'mtumiaji='; then echo "CHECK PASS: e2e: akaunti ya live (mtumiaji) iliundwa wakati wa boot"; else echo "CHECK FAIL: e2e: akaunti ya live HAIKUUNDWA wakati wa boot ($FIRST) - user-setup haipo au live-config imefeli"; fi
 ck 'E2E autologin=yes' "boot ya kwanza inaingia desktop yenyewe, bila password" "boot ya kwanza ilionyesha LOGIN SCREEN (autologin haikutokea)"
 if has 'E2E autologin=no'; then
     ck 'E2E live-login-manual=ok' "mtumiaji / uhuru imefanya kazi kwenye login screen" "mtumiaji / uhuru HAIFANYI KAZI kwenye login screen"

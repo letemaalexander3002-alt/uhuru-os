@@ -36,7 +36,7 @@ xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$W/fs.pack
 if [ -s "$W/fs.packages" ]; then
     cp "$W/fs.packages" "$OUT/filesystem.packages"
     say "jumla ya pakiti: $(wc -l < "$W/fs.packages")"
-    for p in zenity light-locker ufw ntfs-3g exfatprogs firefox-esr chromium xfce4-terminal thunar vlc \
+    for p in user-setup live-config sudo zenity light-locker ufw ntfs-3g exfatprogs firefox-esr chromium xfce4-terminal thunar vlc \
              libreoffice-writer libreoffice-calc libreoffice-impress calamares lightdm lightdm-gtk-greeter \
              network-manager-gnome mousepad; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "pakiti $p ipo"; else check FAIL "pakiti $p HAIPO"; fi
