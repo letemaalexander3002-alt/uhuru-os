@@ -1,5 +1,5 @@
 #!/bin/sh
-# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.7)
+# Uhuru OS — Awamu ya 3: branding kamili + credit ya Letema Group Tech (v13.8)
 # v12: password ya live user = uhuru
 # v13: wizard ya kujisajili (OOBE) na kufunga akaunti ya default
 # v13.1: lock screen, login screen na wallpaper za Uhuru, os-release/issue/motd, GRUB, saa ya EAT,
@@ -10,6 +10,7 @@
 #        jina la live linajazwa, key auto-repeat imezimwa kwenye login
 # v13.5: /etc/default/grub inaundwa (GRUB_DISTRIBUTOR), uhuru-selftest kwa ukaguzi wa login kwenye CI
 # v13.6: autologin ya live hadi usajili (hakuna password mara ya kwanza), telemetry ya CI kwenye serial
+# v13.8: session ya desktop inatajwa waziwazi (autologin-session/user-session), dbus-x11, uchunguzi wa kina wa CI
 # v13.7: CHANZO CHA LOGIN KUSHINDWA: user-setup haikuwepo (apt-recommends false), kwa hiyo live-config haikuunda akaunti ya live
 set -e
 
@@ -379,5 +380,6 @@ for app in firefox-esr chromium xfce4-terminal thunar; do
     fi
 done
 
+echo "Sessions za desktop: $(ls /usr/share/xsessions 2>/dev/null | tr '\n' ' ')"
 echo "Plymouth default: $(readlink -f /usr/share/plymouth/themes/default.plymouth 2>/dev/null || echo haijulikani)"
-echo "Uhuru OS branding hook (v13.7): imekamilika."
+echo "Uhuru OS branding hook (v13.8): imekamilika."

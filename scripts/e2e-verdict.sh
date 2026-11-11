@@ -21,6 +21,10 @@ ACC=$(tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-ACCOUNTS' | tail -1)
 if printf '%s' "$ACC" | grep -q 'mtumiaji=L'; then echo "CHECK PASS: e2e: akaunti ya live (mtumiaji) imefungwa baada ya usajili"; else echo "CHECK FAIL: e2e: akaunti ya live HAIJAFUNGWA ($ACC)"; fi
 if printf '%s' "$ACC" | grep -q 'tester=P'; then echo "CHECK PASS: e2e: akaunti mpya (tester) ina password halali"; else echo "CHECK FAIL: e2e: akaunti mpya haina password halali ($ACC)"; fi
 echo "--- alama za automation (e2e.log) ---"; cat "$E"
+echo "--- njia ya kuingia iliyofanya kazi kwenye login screen ---"
+grep 'greeter-method' "$E" | sed 's/^/CHECK INFO: e2e: /'
+echo "--- UCHUNGUZI WA KINA (UHURU-DIAG, block ya mwisho) ---"
+tr -d '\r' < "$LOG" 2>/dev/null | awk '/^UHURU-DIAG-BEGIN/{buf=""} {buf=buf $0 "\n"} /^UHURU-DIAG-END/{last=buf} END{printf "%s", last}' | grep '^UHURU-DIAG ' | sed 's/^/CHECK INFO: diag: /'
 echo "--- mistari ya mwisho ya UHURU-AUTH (majaribio ya kuingia) ---"
 tr -d '\r' < "$LOG" 2>/dev/null | grep '^UHURU-AUTH' | tail -8 | sed 's/^/CHECK INFO: auth: /'
 echo "--- hali ya mwisho ya mfumo ---"

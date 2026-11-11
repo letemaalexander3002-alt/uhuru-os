@@ -25,6 +25,20 @@ wait_state() {   # wait_state <regex> <sekunde-za-juu>: 0 ikiona hali hiyo kweny
     done
     return 1
 }
+# Kuingia kwenye login screen. Sijui kama kisanduku cha password kina focus mwanzoni, kwa hiyo njia mbili:
+#  A: andika password moja kwa moja.  B: chagua yote kwenye kisanduku, andika jina, Enter, kisha password.
+greeter_login() {   # greeter_login <jina> <password> <regex-ya-mafanikio> <lebo>
+    local u=$1 p=$2 ok=$3 tag=$4
+    typestr "$p"; key ret
+    if wait_state "$ok" 30; then note "E2E greeter-method=password-pekee ($tag)"; return 0; fi
+    shot "login-$tag-njia-A-imeshindikana"
+    key ctrl-a; typestr "$u"; key ret; sleep 3; typestr "$p"; key ret
+    if wait_state "$ok" 45; then note "E2E greeter-method=jina-kisha-password ($tag)"; return 0; fi
+    shot "login-$tag-njia-B-imeshindikana"
+    return 1
+}
+LIVE_UP='(sessions|xfceuser)=[^ ]*mtumiaji'
+TESTER_UP='(sessions|xfceuser)=[^ ]*tester'
 [ "${UHURU_SOURCE_ONLY:-}" = 1 ] && return 0 2>/dev/null
 
 : "${ISO:?iso}"
@@ -47,17 +61,17 @@ if [ "$ACCEL" = kvm ]; then
         note "E2E telemetry=missing"; shot 02-telemetry-HAIKUONEKANA
     else
         note "E2E telemetry=ok"
+        at 100; shot 01b-sekunde-100
         # 1. Boot ya kwanza: je, mfumo unaingia desktop yenyewe?
-        if wait_state 'sessions=[^ ]*mtumiaji' 150; then
+        if wait_state "$LIVE_UP" 150; then
             note "E2E autologin=yes"; shot 02-desktop
         else
             note "E2E autologin=no"; shot 02a-login-screen-bila-autologin
-            typestr uhuru; key ret                # jina limejazwa; jaribu password ya default
-            if wait_state 'sessions=[^ ]*mtumiaji' 90; then note "E2E live-login-manual=ok"
-            else note "E2E live-login-manual=failed"; shot 02b-login-ya-live-imeshindikana; fi
+            if greeter_login mtumiaji uhuru "$LIVE_UP" live; then note "E2E live-login-manual=ok"
+            else note "E2E live-login-manual=failed"; fi
         fi
         # 2. Wizard ya usajili
-        if wait_state 'sessions=[^ ]*mtumiaji.* zenity=[1-9]' 150; then
+        if wait_state "$LIVE_UP.* zenity=[1-9]" 150; then
             note "E2E wizard=seen"
             sleep 2; shot 03-wizard-karibu;            key ret; sleep 4
             shot 04-wizard-saa;                        key ret; sleep 4
@@ -73,8 +87,7 @@ if [ "$ACCEL" = kvm ]; then
             # 3. Login screen mpya, kisha ingia na akaunti ya majaribio
             if wait_state 'sessions=lightdm, .*greeter=[1-9]' 120; then
                 note "E2E greeter-after=yes"; sleep 3; shot 14-login-screen
-                typestr uhurutest1; key ret
-                if wait_state 'sessions=[^ ]*tester' 90; then note "E2E tester-login=yes"; else note "E2E tester-login=no"; fi
+                if greeter_login tester uhurutest1 "$TESTER_UP" tester; then note "E2E tester-login=yes"; else note "E2E tester-login=no"; fi
                 sleep 30; shot 15-baada-ya-login
                 if grep -q 'E2E tester-login=yes' "$OUT/e2e.log"; then
                     key ctrl-alt-t; sleep 8; shot 16-terminal
@@ -93,6 +106,7 @@ else
     note "E2E accel=tcg (automation imeruka)"
     for t in 120 300 600 900 1200; do at "$t"; alive || break; shot "tcg-$t"; done
 fi
+sleep 12                                          # acha telemetry iandike uchunguzi wa mwisho
 mon "quit"; sleep 2; kill "$QPID" 2>/dev/null
 tail -n 40 "$OUT/serial.log" > "$OUT/serial-tail.txt" 2>/dev/null
 exit 0

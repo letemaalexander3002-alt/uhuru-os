@@ -34,11 +34,26 @@ if [ -n "$LIVE_USER" ] && [ -n "$LD_HOME" ]; then
     chown -R lightdm:lightdm "$R$LD_HOME/.cache" 2>/dev/null || true
 fi
 # 5. Ingia moja kwa moja kwenye akaunti ya live hadi mtumiaji ajisajili: mara ya kwanza hakuna password ya kuandika.
-#    (Wizard inaondoa mpangilio huu mara akaunti ya mtumiaji inapotengenezwa.)
-if [ -n "$LIVE_USER" ]; then
-    mkdir -p "$R/etc/lightdm/lightdm.conf.d"
-    printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$LIVE_USER" > "$R/etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf"
+#    Tunataja session ya desktop waziwazi: bila hiyo LightDM hutumia session ya "default" ambayo inaweza isiwepo,
+#    na kuingia (kwa autologin au kwa mkono) kunashindwa kimya kimya na kurudi kwenye login screen.
+SESSION=""
+if [ -f "$R/usr/share/xsessions/xfce.desktop" ]; then
+    SESSION=xfce
+else
+    f=$(ls "$R"/usr/share/xsessions/*.desktop 2>/dev/null | head -1)
+    [ -n "$f" ] && SESSION=$(basename "$f" .desktop)
 fi
+mkdir -p "$R/etc/lightdm/lightdm.conf.d"
+if [ -n "$SESSION" ]; then
+    printf '[Seat:*]\nuser-session=%s\n' "$SESSION" > "$R/etc/lightdm/lightdm.conf.d/55-uhuru-session.conf"
+fi
+if [ -n "$LIVE_USER" ]; then
+    {
+        printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$LIVE_USER"
+        [ -n "$SESSION" ] && printf 'autologin-session=%s\n' "$SESSION"
+    } > "$R/etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf"
+fi
+
 # 6. Mruhusu akaunti ya live kuendesha helper ya usajili kupitia sudo bila password
 #    (haitegemei sudoers ya live-config; ruhusa ni kwa helper hiyo pekee)
 if [ -n "$LIVE_USER" ] && printf '%s' "$LIVE_USER" | grep -Eq '^[a-z][a-z0-9_-]*$'; then

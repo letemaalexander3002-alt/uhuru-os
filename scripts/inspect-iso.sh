@@ -36,7 +36,7 @@ xorriso -osirrox on -indev "$ISO" -extract /live/filesystem.packages "$W/fs.pack
 if [ -s "$W/fs.packages" ]; then
     cp "$W/fs.packages" "$OUT/filesystem.packages"
     say "jumla ya pakiti: $(wc -l < "$W/fs.packages")"
-    for p in user-setup live-config sudo zenity light-locker ufw ntfs-3g exfatprogs firefox-esr chromium xfce4-terminal thunar vlc \
+    for p in user-setup dbus-x11 live-config sudo zenity light-locker ufw ntfs-3g exfatprogs firefox-esr chromium xfce4-terminal thunar vlc \
              libreoffice-writer libreoffice-calc libreoffice-impress calamares lightdm lightdm-gtk-greeter \
              network-manager-gnome mousepad; do
         if awk '{print $1}' "$W/fs.packages" | grep -qx "$p"; then check PASS "pakiti $p ipo"; else check FAIL "pakiti $p HAIPO"; fi
@@ -112,6 +112,8 @@ grep -q '^Exec=/usr/local/bin/uhuru-locker' "$ROOT/etc/xdg/autostart/light-locke
     && check PASS "light-locker inaanzishwa kupitia uhuru-locker" || check FAIL "light-locker.desktop haitumii uhuru-locker"
 say "--- dpkg status: shim-signed / grub-efi-amd64-signed"
 for p in shim-signed grub-efi-amd64-signed; do grep -A2 "^Package: $p$" "$ROOT/var/lib/dpkg/status" >> "$R" 2>&1 || say "$p: haipo kwenye dpkg status"; done
+say "--- xsessions"; ls "$ROOT/usr/share/xsessions/" >> "$R" 2>&1
+[ -f "$ROOT/usr/share/xsessions/xfce.desktop" ] && check PASS "session ya xfce ipo (xsessions/xfce.desktop)" || check FAIL "xsessions/xfce.desktop HAIPO (LightDM haiwezi kuanzisha desktop)"
 say "--- lightdm users.conf"; nc "$ROOT/etc/lightdm/users.conf" >> "$R" 2>&1
 grep -q 'Africa/Dar_es_Salaam' "$ROOT/etc/timezone" 2>/dev/null && check PASS "saa ya default ni Africa/Dar_es_Salaam" || check FAIL "saa si Africa/Dar_es_Salaam"
 grep -q 'UHURU_BANNER' "$ROOT/etc/skel/.bashrc" 2>/dev/null && check PASS "terminal ya Uhuru (bashrc) ipo" || check FAIL "bashrc haina block ya Uhuru"
