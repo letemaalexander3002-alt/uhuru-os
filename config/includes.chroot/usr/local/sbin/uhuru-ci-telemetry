@@ -98,3 +98,4 @@ while :; do
     if [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ]; then wait; exit 0; fi
     sleep "$SLEEP"
 done
+# v13.12
