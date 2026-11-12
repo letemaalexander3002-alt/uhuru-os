@@ -75,6 +75,28 @@ TESTER_UP='(sessions|xfceuser)=[^ ]*tester'
 START=$SECONDS
 at() { while [ $((SECONDS-START)) -lt "$1" ]; do sleep 1; done; }
 
+# v13.11: jaribio la wizard linaongozwa na hatua (step=) kutoka telemetry, si na muda.
+a_ret()  { key ret; }
+a_esc()  { key esc; }
+a_text() { key ctrl-a; typestr "$1"; key ret; }
+# wiz <hatua-sasa> <regex-ya-hatua-inayofuata> <kitendo> [hoja]: subiri hatua itokee, piga picha, tuma funguo,
+# thibitisha wizard imesogea; ikikwama rudia hadi mara 3. Inarudisha 0 sawa, 1 imekwama, 2 telemetry imesimama.
+wiz() {
+    local cur=$1 nxt=$2 try rc; shift 2
+    wait_state " step=$cur " 60; rc=$?
+    [ $rc -eq 2 ] && return 2
+    if [ $rc -ne 0 ]; then note "E2E wizard-step=$cur haikuonekana"; shot "wizard-$cur-HAIKUONEKANA"; return 1; fi
+    sleep 1; shot "wizard-$cur"
+    for try in 1 2 3; do
+        "$@"
+        wait_state " step=$nxt " 25; rc=$?
+        [ $rc -eq 2 ] && return 2
+        if [ $rc -eq 0 ]; then note "E2E wizard-step=$cur ok (jaribio $try)"; return 0; fi
+        note "E2E wizard-step=$cur imekwama (jaribio $try)"
+    done
+    shot "wizard-$cur-IMEKWAMA"; return 1
+}
+
 # e2e: inarudisha 0 ikimaliza (matokeo yamo kwenye e2e.log), 2 telemetry ikisimama.
 e2e() {
     local rc
@@ -95,16 +117,22 @@ e2e() {
     [ $rc -eq 2 ] && return 2
     if [ $rc -ne 0 ]; then note "E2E wizard=missing"; shot 03-wizard-HAIKUONEKANA; return 0; fi
     note "E2E wizard=seen"
-    sleep 2; shot 03-wizard-karibu;            key ret; sleep 4
-    shot 04-wizard-saa;                        key ret; sleep 4
-    shot 05-wizard-jina-kompyuta;              key ret; sleep 4
-    shot 06-wizard-wifi;                       key esc; sleep 4
-    shot 07-wizard-jina-kamili;                typestr tester; key ret; sleep 4
-    shot 08-wizard-username;                   typestr tester; key ret; sleep 4
-    shot 09-wizard-password;                   typestr uhurutest1; key ret; sleep 4
-    shot 10-wizard-rudia;                      typestr uhurutest1; key ret; sleep 4
-    shot 11-wizard-onyesha;                    key esc; sleep 4
-    shot 12-wizard-autologin;                  key esc
+    local spec cur nxt act arg
+    for spec in \
+        "welcome:tz:a_ret:" \
+        "tz:computer:a_ret:" \
+        "computer:fullname:a_ret:" \
+        "fullname:username:a_text:tester" \
+        "username:pass1:a_text:tester" \
+        "pass1:pass2:a_text:uhurutest1" \
+        "pass2:confirm:a_text:uhurutest1" \
+        "confirm:autologin:a_esc:" \
+        "autologin:(creating|rc-[0-9]+|final|none):a_esc:"; do
+        IFS=: read -r cur nxt act arg <<< "$spec"
+        wiz "$cur" "$nxt" "$act" "$arg"; rc=$?
+        [ $rc -eq 2 ] && return 2
+        [ $rc -ne 0 ] && break
+    done
     wait_state 'done=yes' 60; rc=$?
     [ $rc -eq 2 ] && return 2
     if [ $rc -eq 0 ]; then note "E2E registered=yes"; else note "E2E registered=no"; shot 13-usajili-haukukamilika; fi
