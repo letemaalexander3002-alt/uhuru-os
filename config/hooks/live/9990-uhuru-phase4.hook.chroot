@@ -1,0 +1,34 @@
+#!/bin/sh
+# Uhuru OS awamu ya 4: taskbar, Start menu na LGT Store kama chaguo-msingi kwa watumiaji wote.
+# Inaendeshwa mwishoni mwa hooks (9990), kwa hiyo inashinda mipangilio ya zamani ya panel/dock.
+set -e
+P4=/usr/share/uhuru-phase4/skel/.config
+SK=/etc/skel/.config
+[ -d "$P4" ] || { echo "uhuru-phase4: $P4 haipo"; exit 1; }
+
+mkdir -p "$SK/xfce4/xfconf/xfce-perchannel-xml" "$SK/gtk-3.0"
+rm -rf "$SK/xfce4/panel"
+cp -a "$P4/xfce4/panel" "$SK/xfce4/panel"
+cp -f "$P4/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml" "$SK/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+
+# chaguo-msingi la mfumo mzima (kwa mtumiaji asiye na mipangilio yake)
+mkdir -p /etc/xdg/xfce4/xfconf/xfce-perchannel-xml /etc/xdg/xfce4/panel
+cp -f "$P4/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml" /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+cp -f "$P4/xfce4/panel/whiskermenu-1.rc" /etc/xdg/xfce4/panel/whiskermenu-defaults.rc
+
+# mwonekano wa taskbar (CSS) - inaongezwa mara moja tu
+grep -q 'uhuru-phase4' "$SK/gtk-3.0/gtk.css" 2>/dev/null || cat "$P4/gtk-3.0/uhuru-panel.css" >> "$SK/gtk-3.0/gtk.css"
+
+chmod 0755 /usr/local/bin/uhuru-store /usr/local/bin/uhuru-phase4-init
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi
+
+# docks za zamani zisianze pamoja na taskbar mpya
+for f in /etc/xdg/autostart/plank.desktop /etc/xdg/autostart/docky.desktop /etc/xdg/autostart/cairo-dock.desktop; do
+    if [ -f "$f" ]; then rm -f "$f"; fi
+done
+
+# uthibitisho wa ujenzi (hautavunja build; telemetry ya CI itaripoti tena ndani ya ISO)
+grep -q whiskermenu "$SK/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+test -x /usr/local/bin/uhuru-store
+/usr/local/bin/uhuru-store --check || echo "uhuru-phase4: ONYO: uhuru-store --check imeshindwa wakati wa build"
+echo "uhuru-phase4: taskbar + Start menu + LGT Store zimewekwa"

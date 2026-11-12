@@ -50,6 +50,18 @@ if has 'E2E wizard=seen'; then
     if printf '%s' "$ACC" | grep -q 'mtumiaji=L'; then echo "CHECK PASS: e2e: akaunti ya live (mtumiaji) imefungwa baada ya usajili"; else fail "akaunti ya live HAIJAFUNGWA ($ACC)"; fi
     if printf '%s' "$ACC" | grep -q 'tester=P'; then echo "CHECK PASS: e2e: akaunti mpya (tester) ina password halali"; else fail "akaunti mpya haina password halali ($ACC)"; fi
 fi
+# ---- Awamu ya 4: taskbar, Start menu, LGT Store (v14.0) ----
+P4=$(slogc | grep '^UHURU-P4 ' | tail -n 40)
+P4LAST=$(printf '%s\n' "$P4" | tail -n 1)
+p4() { printf '%s\n' "$P4" | grep -Eq "$1"; }
+if [ -z "$P4" ]; then
+    fail "awamu ya 4: hakuna ripoti ya UHURU-P4 (uhuru-store au telemetry haikufanya kazi)"
+else
+    if p4 'cfg=ok launcher=ok icons=ok'; then echo "CHECK PASS: e2e: awamu ya 4: taskbar, Start menu na faili za LGT Store zipo kwenye ISO"; else fail "awamu ya 4: faili za taskbar/Start menu/LGT Store hazijakamilika ($P4LAST)"; fi
+    if p4 'store=CHECK-OK'; then echo "CHECK PASS: e2e: awamu ya 4: orodha ya LGT Store na GTK ni sahihi"; else fail "awamu ya 4: uhuru-store --check imeshindwa ($P4LAST)"; fi
+    if p4 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 4: dirisha la LGT Store linajengwa ndani ya session"; else fail "awamu ya 4: LGT Store haifunguki ndani ya session ($(printf '%s\n' "$P4" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p4 'whisker=[1-9]'; then echo "CHECK PASS: e2e: awamu ya 4: Start menu (Whisker) inakimbia kwenye taskbar"; else fail "awamu ya 4: Start menu (Whisker) haikimbii; angalia picha 02-desktop na 15-baada-ya-login"; fi
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0

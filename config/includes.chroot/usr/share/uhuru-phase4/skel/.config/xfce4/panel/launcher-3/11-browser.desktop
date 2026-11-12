@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kivinjari
+Name[sw]=Kivinjari
+Comment=Vinjari mtandao
+Comment[sw]=Vinjari mtandao
+Exec=firefox-esr %u
+Icon=firefox-esr
+Terminal=false
+StartupNotify=true
+Categories=Network;WebBrowser;

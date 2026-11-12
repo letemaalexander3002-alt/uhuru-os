@@ -154,6 +154,8 @@ e2e() {
         key ctrl-alt-t; sleep 8; shot 16-terminal
         typestr "uhuru-selftest uhurutest1"; key ret
         sleep 15; shot 17-selftest
+        key meta_l; sleep 4; shot 18-start-menu; key esc; sleep 2
+        typestr "uhuru-store"; key ret; sleep 12; shot 19-lgt-store
     fi
     return 0
 }

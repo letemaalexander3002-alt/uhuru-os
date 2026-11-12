@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LGT Store
+Name[sw]=LGT Store
+GenericName=Software Store
+GenericName[sw]=Duka la Programu
+Comment=Install apps and Letema Group Tech products
+Comment[sw]=Sakinisha programu na bidhaa za Letema Group Tech
+Exec=uhuru-store
+Icon=/usr/share/uhuru-store/icons/uhuru-store.svg
+Terminal=false
+Categories=System;PackageManager;GTK;
+Keywords=store;apps;duka;programu;letema;
+Keywords[sw]=duka;programu;sakinisha;letema;
+StartupWMClass=uhuru-store

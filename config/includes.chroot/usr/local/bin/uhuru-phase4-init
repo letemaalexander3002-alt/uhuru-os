@@ -1,0 +1,12 @@
+#!/bin/sh
+# Uhuru OS awamu ya 4: kitufe cha Super (Windows) kinafungua Start menu.
+# Inaendeshwa kila login; haibadilishi mipangilio ambayo mtumiaji ameshaweka.
+command -v xfconf-query >/dev/null 2>&1 || exit 0
+i=0
+while [ "$i" -lt 15 ]; do
+    xfconf-query -c xfce4-keyboard-shortcuts -l >/dev/null 2>&1 && break
+    i=$((i + 1)); sleep 1
+done
+CUR=$(xfconf-query -c xfce4-keyboard-shortcuts -p /commands/custom/Super_L 2>/dev/null || true)
+[ -n "$CUR" ] || xfconf-query -c xfce4-keyboard-shortcuts -p /commands/custom/Super_L -n -t string -s xfce4-popup-whiskermenu >/dev/null 2>&1
+exit 0

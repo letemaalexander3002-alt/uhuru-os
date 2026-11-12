@@ -1,0 +1,375 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "letema",
+      "name": "Bidhaa za Letema Group Tech",
+      "icon": "starred-symbolic",
+      "fallback_icon": "applications-internet",
+      "desc": "Mfumo mkuu wa biashara wa Letema Group Tech na tovuti ya kampuni. Zinafunguka kwenye dirisha lake mwenyewe, kama programu ya kawaida."
+    },
+    {
+      "id": "office",
+      "name": "Ofisi na Uzalishaji",
+      "icon": "x-office-document-symbolic",
+      "fallback_icon": "applications-office",
+      "desc": "Barua pepe, uhasibu, nyaraka na zana za kazi za kila siku."
+    },
+    {
+      "id": "internet",
+      "name": "Mtandao",
+      "icon": "network-workgroup-symbolic",
+      "fallback_icon": "applications-internet",
+      "desc": "Kupakua, kuhamisha mafaili na kuunganisha kompyuta za mbali."
+    },
+    {
+      "id": "graphics",
+      "name": "Picha na Michoro",
+      "icon": "image-x-generic-symbolic",
+      "fallback_icon": "applications-graphics",
+      "desc": "Kuhariri picha, kuchora na kupanga machapisho."
+    },
+    {
+      "id": "media",
+      "name": "Sauti na Video",
+      "icon": "applications-multimedia-symbolic",
+      "fallback_icon": "applications-multimedia",
+      "desc": "Kucheza, kurekodi na kuhariri sauti na video."
+    },
+    {
+      "id": "education",
+      "name": "Elimu",
+      "icon": "applications-science-symbolic",
+      "fallback_icon": "applications-science",
+      "desc": "Programu za kujifunzia kwa watoto na wanafunzi, shuleni na nyumbani."
+    },
+    {
+      "id": "tools",
+      "name": "Zana za Mfumo",
+      "icon": "applications-utilities-symbolic",
+      "fallback_icon": "applications-utilities",
+      "desc": "Kutunza diski, kusafisha mfumo na kuhariri maandishi."
+    }
+  ],
+  "apps": [
+    {
+      "id": "tracetz",
+      "type": "pwa",
+      "name": "TraceTZ Hub",
+      "category": "letema",
+      "priority": 1,
+      "summary": "Mfumo mmoja wa kuendesha biashara yako: sekta zaidi ya 15 mahali pamoja, kila kitu unachohitaji kutoka sehemu moja.",
+      "url": "https://www.tracetzhub.lsicbusiness.online",
+      "icon": "lgt-tracetz",
+      "keywords": "tracetz tracetzhub hub biashara mfumo erp pos sekta business os"
+    },
+    {
+      "id": "letema-web",
+      "type": "pwa",
+      "name": "Letema Group Tech",
+      "category": "letema",
+      "priority": 2,
+      "summary": "Tovuti rasmi ya Letema Group Tech: kampuni, huduma na mawasiliano.",
+      "url": "https://letemagrouptech.lsicbusiness.online",
+      "icon": "lgt-letema",
+      "keywords": "letema lgt tovuti kampuni"
+    },
+    {
+      "id": "thunderbird",
+      "type": "apt",
+      "name": "Thunderbird",
+      "category": "office",
+      "summary": "Barua pepe, kalenda na anwani kwa akaunti zako zote mahali pamoja.",
+      "package": "thunderbird",
+      "desktop": "thunderbird.desktop",
+      "icon": "thunderbird",
+      "keywords": "barua email"
+    },
+    {
+      "id": "gnucash",
+      "type": "apt",
+      "name": "GnuCash",
+      "category": "office",
+      "summary": "Uhasibu wa kibinafsi na wa biashara ndogo: akaunti, bajeti na ripoti.",
+      "package": "gnucash",
+      "desktop": "gnucash.desktop",
+      "icon": "gnucash-icon",
+      "keywords": "uhasibu hesabu"
+    },
+    {
+      "id": "xournalpp",
+      "type": "apt",
+      "name": "Xournal++",
+      "category": "office",
+      "summary": "Andika kwa mkono, weka alama kwenye PDF na ufundishe kwa ubao wa kidijitali.",
+      "package": "xournalpp",
+      "desktop": "com.github.xournalpp.xournalpp.desktop",
+      "icon": "xournalpp",
+      "keywords": "pdf ubao mkono"
+    },
+    {
+      "id": "keepassxc",
+      "type": "apt",
+      "name": "KeePassXC",
+      "category": "office",
+      "summary": "Hifadhi nywila zako zote kwa usalama kwenye kabati moja lililofungwa.",
+      "package": "keepassxc",
+      "desktop": "org.keepassxc.KeePassXC.desktop",
+      "icon": "keepassxc",
+      "keywords": "nywila password"
+    },
+    {
+      "id": "scribus",
+      "type": "apt",
+      "name": "Scribus",
+      "category": "office",
+      "summary": "Kupanga kurasa za magazeti, vipeperushi na vitabu kitaalamu.",
+      "package": "scribus",
+      "desktop": "scribus.desktop",
+      "icon": "scribus",
+      "keywords": "dtp kipeperushi gazeti"
+    },
+    {
+      "id": "calibre",
+      "type": "apt",
+      "name": "Calibre",
+      "category": "office",
+      "summary": "Maktaba ya vitabu pepe: soma, geuza na panga vitabu vyako.",
+      "package": "calibre",
+      "desktop": "calibre-gui.desktop",
+      "icon": "calibre-gui",
+      "keywords": "vitabu ebook"
+    },
+    {
+      "id": "filezilla",
+      "type": "apt",
+      "name": "FileZilla",
+      "category": "internet",
+      "summary": "Hamisha mafaili kwenda na kutoka kwenye seva za FTP na SFTP.",
+      "package": "filezilla",
+      "desktop": "filezilla.desktop",
+      "icon": "filezilla",
+      "keywords": "ftp seva"
+    },
+    {
+      "id": "transmission",
+      "type": "apt",
+      "name": "Transmission",
+      "category": "internet",
+      "summary": "Kipakuzi chepesi cha torrent kisicho na matangazo.",
+      "package": "transmission-gtk",
+      "desktop": "transmission-gtk.desktop",
+      "icon": "transmission",
+      "keywords": "torrent pakua"
+    },
+    {
+      "id": "remmina",
+      "type": "apt",
+      "name": "Remmina",
+      "category": "internet",
+      "summary": "Unganisha na kudhibiti kompyuta za mbali (RDP, VNC, SSH).",
+      "package": "remmina",
+      "desktop": "org.remmina.Remmina.desktop",
+      "icon": "org.remmina.Remmina",
+      "keywords": "rdp vnc ssh mbali"
+    },
+    {
+      "id": "gimp",
+      "type": "apt",
+      "name": "GIMP",
+      "category": "graphics",
+      "summary": "Hariri na uboreshe picha kwa zana za kitaalamu, bila malipo.",
+      "package": "gimp",
+      "desktop": "gimp.desktop",
+      "icon": "gimp",
+      "keywords": "picha photoshop"
+    },
+    {
+      "id": "inkscape",
+      "type": "apt",
+      "name": "Inkscape",
+      "category": "graphics",
+      "summary": "Chora nembo, michoro na vielelezo vya vekta (SVG).",
+      "package": "inkscape",
+      "desktop": "org.inkscape.Inkscape.desktop",
+      "icon": "org.inkscape.Inkscape",
+      "keywords": "nembo vekta logo"
+    },
+    {
+      "id": "krita",
+      "type": "apt",
+      "name": "Krita",
+      "category": "graphics",
+      "summary": "Uchoraji wa kidijitali na katuni kwa wasanii.",
+      "package": "krita",
+      "desktop": "org.kde.krita.desktop",
+      "icon": "krita",
+      "keywords": "kuchora katuni"
+    },
+    {
+      "id": "shotwell",
+      "type": "apt",
+      "name": "Shotwell",
+      "category": "graphics",
+      "summary": "Panga, tazama na uhariri picha zako za kila siku.",
+      "package": "shotwell",
+      "desktop": "shotwell.desktop",
+      "icon": "shotwell",
+      "keywords": "picha albamu"
+    },
+    {
+      "id": "vlc",
+      "type": "apt",
+      "name": "VLC",
+      "category": "media",
+      "summary": "Cheza karibu aina zote za video na sauti, bila vifurushi vya ziada.",
+      "package": "vlc",
+      "desktop": "vlc.desktop",
+      "icon": "vlc",
+      "keywords": "video muziki cheza"
+    },
+    {
+      "id": "audacity",
+      "type": "apt",
+      "name": "Audacity",
+      "category": "media",
+      "summary": "Rekodi na uhariri sauti, podikasti na muziki.",
+      "package": "audacity",
+      "desktop": "audacity.desktop",
+      "icon": "audacity",
+      "keywords": "sauti rekodi podcast"
+    },
+    {
+      "id": "kdenlive",
+      "type": "apt",
+      "name": "Kdenlive",
+      "category": "media",
+      "summary": "Hariri video kwa tabaka nyingi, athari na mabadiliko ya kitaalamu.",
+      "package": "kdenlive",
+      "desktop": "org.kde.kdenlive.desktop",
+      "icon": "kdenlive",
+      "keywords": "video hariri"
+    },
+    {
+      "id": "obs",
+      "type": "apt",
+      "name": "OBS Studio",
+      "category": "media",
+      "summary": "Rekodi skrini na urushe moja kwa moja (live streaming).",
+      "package": "obs-studio",
+      "desktop": "com.obsproject.Studio.desktop",
+      "icon": "com.obsproject.Studio",
+      "keywords": "rekodi skrini live"
+    },
+    {
+      "id": "handbrake",
+      "type": "apt",
+      "name": "HandBrake",
+      "category": "media",
+      "summary": "Geuza video kutoka muundo mmoja kwenda mwingine na punguza ukubwa.",
+      "package": "handbrake",
+      "desktop": "fr.handbrake.ghb.desktop",
+      "icon": "fr.handbrake.ghb",
+      "keywords": "video geuza"
+    },
+    {
+      "id": "gcompris",
+      "type": "apt",
+      "name": "GCompris",
+      "category": "education",
+      "summary": "Zaidi ya michezo 100 ya kujifunza kwa watoto wa miaka 2 hadi 10.",
+      "package": "gcompris-qt",
+      "desktop": "org.kde.gcompris.desktop",
+      "icon": "gcompris-qt",
+      "keywords": "watoto michezo shule"
+    },
+    {
+      "id": "stellarium",
+      "type": "apt",
+      "name": "Stellarium",
+      "category": "education",
+      "summary": "Anga la usiku kwenye skrini yako: nyota, sayari na makundi nyota.",
+      "package": "stellarium",
+      "desktop": "org.stellarium.Stellarium.desktop",
+      "icon": "stellarium",
+      "keywords": "anga nyota sayari"
+    },
+    {
+      "id": "tuxmath",
+      "type": "apt",
+      "name": "Tux Math",
+      "category": "education",
+      "summary": "Jifunze hesabu kwa mchezo wa kufurahisha wa kupiga vimondo.",
+      "package": "tuxmath",
+      "desktop": "tuxmath.desktop",
+      "icon": "tuxmath",
+      "keywords": "hesabu watoto"
+    },
+    {
+      "id": "tuxtype",
+      "type": "apt",
+      "name": "Tux Typing",
+      "category": "education",
+      "summary": "Jifunze kuandika kwa kasi kwenye kibodi kupitia michezo.",
+      "package": "tuxtype",
+      "desktop": "tuxtype.desktop",
+      "icon": "tuxtype",
+      "keywords": "kuandika kibodi"
+    },
+    {
+      "id": "marble",
+      "type": "apt",
+      "name": "Marble",
+      "category": "education",
+      "summary": "Dunia na ramani za kielimu: jiografia, historia na mazingira.",
+      "package": "marble",
+      "desktop": "org.kde.marble.desktop",
+      "icon": "marble",
+      "keywords": "ramani dunia jiografia"
+    },
+    {
+      "id": "gparted",
+      "type": "apt",
+      "name": "GParted",
+      "category": "tools",
+      "summary": "Panga upya diski na partition kwa usalama.",
+      "package": "gparted",
+      "desktop": "gparted.desktop",
+      "icon": "gparted",
+      "keywords": "diski partition"
+    },
+    {
+      "id": "bleachbit",
+      "type": "apt",
+      "name": "BleachBit",
+      "category": "tools",
+      "summary": "Safisha mafaili ya muda na upate nafasi zaidi kwenye diski.",
+      "package": "bleachbit",
+      "desktop": "bleachbit.desktop",
+      "icon": "bleachbit",
+      "keywords": "safisha nafasi"
+    },
+    {
+      "id": "synaptic",
+      "type": "apt",
+      "name": "Synaptic",
+      "category": "tools",
+      "summary": "Kidhibiti cha kina cha vifurushi vya mfumo kwa watumiaji wa kiufundi.",
+      "package": "synaptic",
+      "desktop": "synaptic.desktop",
+      "icon": "synaptic",
+      "keywords": "vifurushi apt"
+    },
+    {
+      "id": "geany",
+      "type": "apt",
+      "name": "Geany",
+      "category": "tools",
+      "summary": "Kihariri chepesi cha msimbo na maandishi kwa wanaoanza programu.",
+      "package": "geany",
+      "desktop": "geany.desktop",
+      "icon": "geany",
+      "keywords": "msimbo code programu"
+    }
+  ]
+}

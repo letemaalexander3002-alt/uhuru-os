@@ -1,0 +1,711 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""LGT Store - Duka la Programu la Uhuru OS (Letema Group Tech).
+
+  uhuru-store            fungua duka
+  uhuru-store --check    kagua orodha ya programu na GTK (haihitaji skrini)
+  uhuru-store --smoke    jenga dirisha bila kulionyesha (kwa CI)
+"""
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import threading
+
+VERSION = "1.0"
+SHARE = os.environ.get("UHURU_STORE_SHARE", "/usr/share/uhuru-store")
+CATALOG_D = os.environ.get("UHURU_STORE_CATALOG_D", "/etc/uhuru-store/catalog.d")
+APPS_DIR = os.environ.get("UHURU_STORE_APPS_DIR",
+                          os.path.join(os.path.expanduser("~"), ".local", "share", "applications"))
+ICON_DIR = os.path.join(SHARE, "icons")
+
+CSS = """
+window.lgt-store { background: #f3f7f7; }
+headerbar.lgt-header { background: #0b3b44; color: #ffffff; border: none; box-shadow: none; }
+headerbar.lgt-header .title { color: #ffffff; font-weight: 700; }
+headerbar.lgt-header .subtitle { color: #f5c518; font-size: 9pt; }
+headerbar.lgt-header entry { background: rgba(255,255,255,0.14); color: #ffffff; border: none;
+    border-radius: 999px; padding: 6px 14px; min-height: 22px; box-shadow: none; }
+headerbar.lgt-header button { color: #ffffff; background: transparent; border: none; box-shadow: none; }
+headerbar.lgt-header button:hover { background: rgba(255,255,255,0.14); }
+.lgt-sidebar { background: #0b2f36; }
+.lgt-sidebar row { color: #cfe6e6; padding: 10px 14px; margin: 2px 10px; border-radius: 10px; }
+.lgt-sidebar row:hover { background: rgba(255,255,255,0.07); }
+.lgt-sidebar row:selected { background: rgba(245,197,24,0.20); color: #f5c518; }
+.lgt-sidebar label { font-size: 10.5pt; }
+.lgt-logo { color: #ffffff; font-weight: 800; font-size: 15pt; }
+.lgt-logo-sub { color: #f5c518; font-size: 9pt; }
+.lgt-hero { background-image: linear-gradient(to right, #0b3b44, #137a82); border-radius: 18px; padding: 22px 26px; }
+.lgt-hero-title { color: #ffffff; font-weight: 800; font-size: 19pt; }
+.lgt-hero-sub { color: #d6efef; font-size: 10.5pt; }
+.lgt-card { background: #ffffff; border-radius: 16px; padding: 16px; border: 1px solid #dfe9e9;
+    box-shadow: 0 2px 8px rgba(11,59,68,0.08); }
+.lgt-card:hover { border-color: #f5c518; }
+.lgt-card-title { color: #0b2f36; font-weight: 700; font-size: 12.5pt; }
+.lgt-card-desc { color: #587274; font-size: 10pt; }
+.lgt-badge { background: #e6f1f1; color: #0b3b44; border-radius: 999px; padding: 1px 9px; font-size: 8.5pt; font-weight: 700; }
+.lgt-badge-letema { background: #f5c518; color: #0b2f36; border-radius: 999px; padding: 1px 9px; font-size: 8.5pt; font-weight: 800; }
+button.lgt-install { background: #f5c518; color: #0b2f36; border-radius: 999px; padding: 6px 20px; font-weight: 800; border: none; box-shadow: none; }
+button.lgt-install:hover { background: #ffd43b; }
+button.lgt-open { background: #0b3b44; color: #ffffff; border-radius: 999px; padding: 6px 20px; font-weight: 700; border: none; box-shadow: none; }
+button.lgt-open:hover { background: #137a82; }
+button.lgt-remove { background: transparent; color: #587274; border-radius: 999px; padding: 6px 14px; border: 1px solid #c9d8d8; box-shadow: none; }
+button.lgt-remove:hover { color: #b42318; border-color: #b42318; }
+button.lgt-soon { background: #eef3f3; color: #7d9496; border-radius: 999px; padding: 6px 16px; border: none; box-shadow: none; }
+.lgt-status { color: #587274; font-size: 9pt; }
+.lgt-empty { color: #7d9496; font-size: 12pt; }
+"""
+
+# ------------------------------------------------------------------ katalogi
+
+
+def _read_json(path):
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def load_catalog():
+    """Katalogi kuu + faili zozote kwenye /etc/uhuru-store/catalog.d/*.json (zinabadilisha kwa 'id')."""
+    cat = _read_json(os.path.join(SHARE, "catalog.json"))
+    cats = {c["id"]: c for c in cat.get("categories", [])}
+    apps = {a["id"]: a for a in cat.get("apps", [])}
+    order = [a["id"] for a in cat.get("apps", [])]
+    for path in sorted(glob.glob(os.path.join(CATALOG_D, "*.json"))):
+        try:
+            extra = _read_json(path)
+        except Exception as exc:  # faili mbovu isiangushe duka
+            sys.stderr.write("catalog.d: %s: %s\n" % (path, exc))
+            continue
+        for c in extra.get("categories", []):
+            cats[c["id"]] = dict(cats.get(c["id"], {}), **c)
+        for a in extra.get("apps", []):
+            if a["id"] not in apps:
+                order.append(a["id"])
+            apps[a["id"]] = dict(apps.get(a["id"], {}), **a)
+    return {"categories": list(cats.values()), "apps": [apps[i] for i in order]}
+
+
+def validate(cat):
+    """Inarudisha (idadi ya apt, idadi ya pwa) au inatupa ValueError."""
+    cids = {c["id"] for c in cat["categories"]}
+    seen, pk, pw = set(), 0, 0
+    for a in cat["apps"]:
+        for key in ("id", "type", "name", "summary", "category"):
+            if not a.get(key):
+                raise ValueError("app bila '%s': %r" % (key, a.get("id")))
+        if a["id"] in seen:
+            raise ValueError("id imerudiwa: " + a["id"])
+        seen.add(a["id"])
+        if a["category"] not in cids:
+            raise ValueError("kundi lisilojulikana: %s (%s)" % (a["category"], a["id"]))
+        if a["type"] == "apt":
+            if not a.get("package"):
+                raise ValueError("apt bila 'package': " + a["id"])
+            pk += 1
+        elif a["type"] == "pwa":
+            if "url" not in a:
+                raise ValueError("pwa bila 'url': " + a["id"])
+            icon = a.get("icon", "")
+            if icon and not os.path.isfile(os.path.join(ICON_DIR, icon + ".svg")):
+                raise ValueError("icon haipo: %s.svg (%s)" % (icon, a["id"]))
+            pw += 1
+        else:
+            raise ValueError("aina isiyojulikana: %s (%s)" % (a["type"], a["id"]))
+    if pk < 10 or pw < 1:
+        raise ValueError("orodha ni ndogo mno (apt=%d pwa=%d)" % (pk, pw))
+    return pk, pw
+
+
+# ------------------------------------------------------------------ hali ya programu
+
+
+def apt_installed(packages):
+    """Seti ya vifurushi vilivyosakinishwa (dpkg-query, bila mtandao)."""
+    pkgs = sorted(set(p for p in packages if p))
+    if not pkgs or not shutil.which("dpkg-query"):
+        return set()
+    try:
+        out = subprocess.run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n"] + pkgs,
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             universal_newlines=True, timeout=30).stdout
+    except Exception:
+        return set()
+    done = set()
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[1].startswith("ii"):
+            done.add(parts[0])
+    return done
+
+
+def pwa_path(app):
+    return os.path.join(APPS_DIR, "lgt-%s.desktop" % app["id"])
+
+
+def pwa_ready(app):
+    return bool(app.get("url"))
+
+
+def pwa_installed(app):
+    return os.path.isfile(pwa_path(app))
+
+
+def find_browser():
+    for name in ("chromium", "chromium-browser", "google-chrome"):
+        path = shutil.which(name)
+        if path:
+            return os.path.basename(path)
+    return None
+
+
+def pwa_desktop_text(app, browser):
+    icon = os.path.join(ICON_DIR, app.get("icon", "") + ".svg")
+    if not os.path.isfile(icon):
+        icon = "applications-internet"
+    url = app["url"].replace("%", "%%").replace('"', "%22")
+    wm = "lgt-" + app["id"]
+    lines = [
+        "[Desktop Entry]", "Version=1.0", "Type=Application",
+        "Name=" + app["name"], "Comment=" + app["summary"],
+        'Exec=%s --app="%s" --class=%s' % (browser, url, wm),
+        "Icon=" + icon, "Terminal=false", "Categories=Network;Office;",
+        "StartupWMClass=" + wm, "X-LGT-Store=true", "",
+    ]
+    return "\n".join(lines)
+
+
+def pwa_install(app):
+    if not pwa_ready(app):
+        raise RuntimeError("Anwani (URL) ya programu hii bado haijawekwa.")
+    browser = find_browser()
+    if not browser:
+        raise RuntimeError("Chromium haijasakinishwa; haiwezi kuunda programu ya wavuti.")
+    os.makedirs(APPS_DIR, exist_ok=True)
+    path = pwa_path(app)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(pwa_desktop_text(app, browser))
+    os.chmod(path, 0o755)
+    _refresh_desktop_db()
+
+
+def pwa_remove(app):
+    try:
+        os.remove(pwa_path(app))
+    except FileNotFoundError:
+        pass
+    _refresh_desktop_db()
+
+
+def _refresh_desktop_db():
+    exe = shutil.which("update-desktop-database")
+    if exe:
+        try:
+            subprocess.run([exe, APPS_DIR], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+        except Exception:
+            pass
+
+
+def run_privileged(argv, on_line=None):
+    """Endesha amri kama root (pkexec). Inarudisha (msimbo, mistari-ya-mwisho)."""
+    cmd = ["env", "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C"] + argv
+    if os.geteuid() != 0:
+        cmd = ["pkexec"] + cmd
+    tail = []
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    except OSError as exc:
+        return 127, [str(exc)]
+    for line in proc.stdout:
+        line = line.rstrip()
+        if line:
+            tail = (tail + [line])[-8:]
+            if on_line:
+                on_line(line)
+    return proc.wait(), tail
+
+
+def explain_failure(rc, tail):
+    if rc in (126, 127) and os.geteuid() != 0:
+        return "Umeghairi au huna ruhusa ya msimamizi (password si sahihi)."
+    text = " ".join(tail).lower()
+    if "could not resolve" in text or "temporary failure" in text or "failed to fetch" in text or "unable to connect" in text:
+        return "Hakuna mtandao. Unganisha mtandao kisha ujaribu tena."
+    if "unable to locate package" in text or "has no installation candidate" in text:
+        return "Kifurushi hakipatikani. Jaribu \"Sasisha orodha\" ukiwa na mtandao."
+    return "Imeshindikana (msimbo %s).\n%s" % (rc, "\n".join(tail[-3:]))
+
+
+# ------------------------------------------------------------------ amri za CLI
+
+
+def cmd_check():
+    try:
+        pk, pw = validate(load_catalog())
+    except Exception as exc:
+        print("CHECK-FAIL catalog %s" % str(exc).replace(" ", "_")[:60])
+        return 1
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk  # noqa: F401
+    except Exception as exc:
+        if os.environ.get("UHURU_STORE_NOGTK") != "1":
+            print("CHECK-FAIL gtk %s" % str(exc).replace(" ", "_")[:60])
+            return 1
+    print("CHECK-OK pkgs=%d pwa=%d" % (pk, pw))
+    return 0
+
+
+def main(argv):
+    if "--check" in argv:
+        return cmd_check()
+    smoke = "--smoke" in argv
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        gi.require_version("Gdk", "3.0")
+        from gi.repository import Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio
+    except Exception as exc:
+        print("SMOKE-FAIL import %s" % str(exc).replace(" ", "_")[:60])
+        return 1
+    if Gdk.Display.get_default() is None:
+        print("SMOKE-FAIL no-display" if smoke else "uhuru-store: hakuna skrini (DISPLAY)")
+        return 1
+    GLib.set_prgname("uhuru-store")
+    GLib.set_application_name("LGT Store")
+    try:
+        ui = build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio)
+        win = ui["StoreWindow"](load_catalog())
+        if smoke:
+            win.get_child().show_all()
+            win.realize()
+            for _ in range(60):
+                if not Gtk.events_pending():
+                    break
+                Gtk.main_iteration()
+            print("SMOKE-OK cards=%d" % win.card_count())
+            win.destroy()
+            return 0
+        win.connect("destroy", Gtk.main_quit)
+        win.show_all()
+        win.refresh_filter()
+        Gtk.main()
+        return 0
+    except Exception as exc:
+        import traceback
+        if smoke:
+            traceback.print_exc(file=sys.stderr)
+            print("SMOKE-FAIL %s" % (type(exc).__name__ + ":" + str(exc)).replace(" ", "_")[:70])
+            return 1
+        raise
+
+
+# ------------------------------------------------------------------ GUI
+
+
+def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
+
+    def theme_has(name):
+        theme = Gtk.IconTheme.get_default()
+        return bool(name) and theme.has_icon(name)
+
+    def make_icon(app, fallback, size):
+        img = Gtk.Image()
+        name = app.get("icon", "")
+        svg = os.path.join(ICON_DIR, name + ".svg")
+        if name and os.path.isfile(svg):
+            try:
+                img.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_size(svg, size, size))
+                return img
+            except Exception:
+                pass
+        if theme_has(name):
+            img.set_from_icon_name(name, Gtk.IconSize.DIALOG)
+        else:
+            img.set_from_icon_name(fallback or "package-x-generic", Gtk.IconSize.DIALOG)
+        img.set_pixel_size(size)
+        return img
+
+    class Card(Gtk.Box):
+        def __init__(self, win, app, fallback_icon, letema):
+            Gtk.Box.__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.win, self.app = win, app
+            self.get_style_context().add_class("lgt-card")
+            top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+            top.pack_start(make_icon(app, fallback_icon, 56), False, False, 0)
+            txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            name = Gtk.Label(label=app["name"])
+            name.set_xalign(0)
+            name.set_ellipsize(Pango.EllipsizeMode.END)
+            name.get_style_context().add_class("lgt-card-title")
+            badge_text = "Letema" if letema else ("PWA" if app["type"] == "pwa" else "Debian")
+            badge = Gtk.Label(label=badge_text)
+            badge.set_xalign(0)
+            badge.set_halign(Gtk.Align.START)
+            badge.get_style_context().add_class("lgt-badge-letema" if letema else "lgt-badge")
+            txt.pack_start(name, False, False, 0)
+            txt.pack_start(badge, False, False, 0)
+            top.pack_start(txt, True, True, 0)
+            self.pack_start(top, False, False, 0)
+            desc = Gtk.Label(label=app["summary"])
+            desc.set_xalign(0)
+            desc.set_yalign(0)
+            desc.set_line_wrap(True)
+            desc.set_max_width_chars(30)
+            desc.set_size_request(-1, 58)
+            desc.get_style_context().add_class("lgt-card-desc")
+            self.pack_start(desc, True, True, 0)
+            bottom = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            self.btn = Gtk.Button(label="Sakinisha")
+            self.btn.connect("clicked", self.on_main)
+            self.rm = Gtk.Button(label="Ondoa")
+            self.rm.get_style_context().add_class("lgt-remove")
+            self.rm.connect("clicked", self.on_remove)
+            self.rm.set_no_show_all(True)
+            self.spin = Gtk.Spinner()
+            self.spin.set_no_show_all(True)
+            self.status = Gtk.Label(label="")
+            self.status.set_xalign(0)
+            self.status.set_ellipsize(Pango.EllipsizeMode.END)
+            self.status.get_style_context().add_class("lgt-status")
+            bottom.pack_start(self.btn, False, False, 0)
+            bottom.pack_start(self.rm, False, False, 0)
+            bottom.pack_start(self.spin, False, False, 0)
+            bottom.pack_start(self.status, True, True, 0)
+            self.pack_start(bottom, False, False, 0)
+            self.busy = False
+            self.state = "available"
+
+        def set_state(self, state):
+            self.state = state
+            ctx = self.btn.get_style_context()
+            for cls in ("lgt-install", "lgt-open", "lgt-soon"):
+                ctx.remove_class(cls)
+            self.btn.set_sensitive(not self.busy)
+            self.rm.set_visible(state == "installed" and not self.busy)
+            if state == "installed":
+                self.btn.set_label("Fungua")
+                ctx.add_class("lgt-open")
+            elif state == "soon":
+                self.btn.set_label("Inakuja hivi karibuni")
+                ctx.add_class("lgt-soon")
+                self.btn.set_sensitive(False)
+            else:
+                self.btn.set_label("Sakinisha")
+                ctx.add_class("lgt-install")
+
+        def set_busy(self, busy, text=""):
+            self.busy = busy
+            self.btn.set_sensitive(not busy and self.state != "soon")
+            self.rm.set_sensitive(not busy)
+            if busy:
+                self.spin.show()
+                self.spin.start()
+            else:
+                self.spin.stop()
+                self.spin.hide()
+            self.status.set_text(text)
+
+        def set_status(self, text):
+            self.status.set_text(text[:70])
+
+        def on_main(self, _btn):
+            if self.state == "installed":
+                self.win.launch(self.app)
+            elif self.state == "available":
+                self.win.install(self, self.app)
+
+        def on_remove(self, _btn):
+            self.win.remove(self, self.app)
+
+    class StoreWindow(Gtk.Window):
+        def __init__(self, catalog):
+            Gtk.Window.__init__(self, title="LGT Store")
+            self.catalog = catalog
+            self.cats = {c["id"]: c for c in catalog["categories"]}
+            self.cat_id = "all"
+            self.query = ""
+            self.cards = []
+            self.apt_done = set()
+            self.set_default_size(1060, 700)
+            self.set_position(Gtk.WindowPosition.CENTER)
+            self.get_style_context().add_class("lgt-store")
+            icon = os.path.join(ICON_DIR, "uhuru-store.svg")
+            if os.path.isfile(icon):
+                try:
+                    self.set_icon_from_file(icon)
+                except Exception:
+                    pass
+            prov = Gtk.CssProvider()
+            prov.load_from_data(CSS.encode("utf-8"))
+            screen = Gdk.Screen.get_default()
+            if screen is not None:
+                Gtk.StyleContext.add_provider_for_screen(screen, prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            self._build()
+            self.reload_state()
+
+        # ---- ujenzi
+        def _build(self):
+            hb = Gtk.HeaderBar()
+            hb.set_show_close_button(True)
+            hb.get_style_context().add_class("lgt-header")
+            hb.set_title("LGT Store")
+            hb.set_subtitle("Duka la Programu \u2022 Uhuru OS")
+            self.search = Gtk.SearchEntry()
+            self.search.set_placeholder_text("Tafuta programu\u2026")
+            self.search.set_width_chars(36)
+            self.search.connect("search-changed", self.on_search)
+            hb.set_custom_title(self.search)
+            refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+            refresh.set_tooltip_text("Sasisha orodha ya programu (inahitaji mtandao)")
+            refresh.connect("clicked", self.on_update_lists)
+            hb.pack_end(refresh)
+            self.set_titlebar(hb)
+
+            root = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+            self.add(root)
+
+            side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            side.get_style_context().add_class("lgt-sidebar")
+            side.set_size_request(236, -1)
+            logo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            logo.set_margin_top(22)
+            logo.set_margin_bottom(16)
+            logo.set_margin_start(24)
+            l1 = Gtk.Label(label="LGT Store")
+            l1.set_xalign(0)
+            l1.get_style_context().add_class("lgt-logo")
+            l2 = Gtk.Label(label="Letema Group Tech")
+            l2.set_xalign(0)
+            l2.get_style_context().add_class("lgt-logo-sub")
+            logo.pack_start(l1, False, False, 0)
+            logo.pack_start(l2, False, False, 0)
+            side.pack_start(logo, False, False, 0)
+            self.listbox = Gtk.ListBox()
+            self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+            self.listbox.get_style_context().add_class("lgt-sidebar")
+            self.rows = {}
+            entries = [("all", "Zote", "view-grid-symbolic")]
+            for c in self.catalog["categories"]:
+                entries.append((c["id"], c["name"], c.get("icon", "folder-symbolic")))
+            entries.append(("installed", "Zilizosakinishwa", "object-select-symbolic"))
+            for cid, label, icon in entries:
+                row = Gtk.ListBoxRow()
+                box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+                box.pack_start(Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.BUTTON), False, False, 0)
+                lab = Gtk.Label(label=label)
+                lab.set_xalign(0)
+                lab.set_ellipsize(Pango.EllipsizeMode.END)
+                box.pack_start(lab, True, True, 0)
+                row.add(box)
+                row.cat_id = cid
+                self.listbox.add(row)
+                self.rows[cid] = row
+            self.listbox.connect("row-selected", self.on_category)
+            side_scroll = Gtk.ScrolledWindow()
+            side_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            side_scroll.add(self.listbox)
+            side.pack_start(side_scroll, True, True, 0)
+            ver = Gtk.Label(label="Uhuru OS \u2022 toleo %s" % VERSION)
+            ver.get_style_context().add_class("lgt-logo-sub")
+            ver.set_margin_bottom(14)
+            side.pack_start(ver, False, False, 0)
+            root.pack_start(side, False, False, 0)
+
+            main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+            main.set_margin_top(22)
+            main.set_margin_bottom(22)
+            main.set_margin_start(26)
+            main.set_margin_end(26)
+            self.hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            self.hero.get_style_context().add_class("lgt-hero")
+            self.hero_title = Gtk.Label(label="")
+            self.hero_title.set_xalign(0)
+            self.hero_title.get_style_context().add_class("lgt-hero-title")
+            self.hero_sub = Gtk.Label(label="")
+            self.hero_sub.set_xalign(0)
+            self.hero_sub.set_line_wrap(True)
+            self.hero_sub.get_style_context().add_class("lgt-hero-sub")
+            self.hero.pack_start(self.hero_title, False, False, 0)
+            self.hero.pack_start(self.hero_sub, False, False, 0)
+            main.pack_start(self.hero, False, False, 0)
+
+            self.flow = Gtk.FlowBox()
+            self.flow.set_valign(Gtk.Align.START)
+            self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+            self.flow.set_homogeneous(True)
+            self.flow.set_min_children_per_line(1)
+            self.flow.set_max_children_per_line(4)
+            self.flow.set_column_spacing(16)
+            self.flow.set_row_spacing(16)
+            self.flow.set_filter_func(self._filter)
+            self.flow.set_sort_func(self._sort)
+            self.empty = Gtk.Label(label="Hakuna programu zilizopatikana.")
+            self.empty.get_style_context().add_class("lgt-empty")
+            self.empty.set_no_show_all(True)
+            holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+            holder.pack_start(self.flow, False, False, 0)
+            holder.pack_start(self.empty, False, False, 24)
+            scroll = Gtk.ScrolledWindow()
+            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            scroll.add(holder)
+            main.pack_start(scroll, True, True, 0)
+            root.pack_start(main, True, True, 0)
+
+            for app in self.catalog["apps"]:
+                cat = self.cats.get(app["category"], {})
+                card = Card(self, app, cat.get("fallback_icon", "package-x-generic"), app["category"] == "letema")
+                self.cards.append(card)
+                self.flow.add(card)
+            self.listbox.select_row(self.rows["all"])
+
+        # ---- hali
+        def reload_state(self):
+            self.apt_done = apt_installed([c.app.get("package") for c in self.cards if c.app["type"] == "apt"])
+            for card in self.cards:
+                card.set_state(self.state_of(card.app))
+            self.refresh_filter()
+
+        def state_of(self, app):
+            if app["type"] == "pwa":
+                if pwa_installed(app):
+                    return "installed"
+                return "available" if pwa_ready(app) else "soon"
+            return "installed" if app["package"] in self.apt_done else "available"
+
+        def card_count(self):
+            return len(self.cards)
+
+        # ---- kuchuja
+        def matches(self, card):
+            app = card.app
+            q = self.query
+            if q:
+                hay = " ".join([app["name"], app["summary"], app.get("keywords", ""), app.get("package", "")]).lower()
+                if q not in hay:
+                    return False
+            if self.cat_id == "all":
+                return True
+            if self.cat_id == "installed":
+                return card.state == "installed"
+            return app["category"] == self.cat_id
+
+        def _filter(self, child):
+            return self.matches(child.get_child())
+
+        def _sort(self, a, b):
+            ca, cb = a.get_child().app, b.get_child().app
+            ka = (0 if ca["category"] == "letema" else 1, ca.get("priority", 100), ca["name"].lower())
+            kb = (0 if cb["category"] == "letema" else 1, cb.get("priority", 100), cb["name"].lower())
+            return (ka > kb) - (ka < kb)
+
+        def refresh_filter(self):
+            self.flow.invalidate_filter()
+            self.flow.invalidate_sort()
+            shown = sum(1 for c in self.cards if self.matches(c))
+            self.empty.set_visible(shown == 0)
+            if shown == 0:
+                self.empty.show()
+            if self.cat_id == "all":
+                self.hero_title.set_text("Karibu LGT Store")
+                self.hero_sub.set_text("Pata programu na bidhaa za Letema Group Tech kwa click moja \u2014 bila kuhangaika.")
+            elif self.cat_id == "installed":
+                self.hero_title.set_text("Zilizosakinishwa")
+                self.hero_sub.set_text("Programu ulizosakinisha kupitia duka hili.")
+            else:
+                cat = self.cats.get(self.cat_id, {})
+                self.hero_title.set_text(cat.get("name", ""))
+                self.hero_sub.set_text(cat.get("desc", ""))
+
+        def on_search(self, entry):
+            self.query = entry.get_text().strip().lower()
+            self.refresh_filter()
+
+        def on_category(self, _lb, row):
+            if row is not None:
+                self.cat_id = row.cat_id
+                self.refresh_filter()
+
+        # ---- vitendo
+        def message(self, kind, text, secondary=""):
+            dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=kind,
+                                    buttons=Gtk.ButtonsType.CLOSE, text=text)
+            if secondary:
+                dlg.format_secondary_text(secondary)
+            dlg.run()
+            dlg.destroy()
+
+        def launch(self, app):
+            try:
+                if app["type"] == "pwa":
+                    info = Gio.DesktopAppInfo.new_from_filename(pwa_path(app))
+                else:
+                    info = Gio.DesktopAppInfo.new(app.get("desktop", app["package"] + ".desktop"))
+                if info is None:
+                    raise RuntimeError("Faili ya programu haipatikani.")
+                info.launch([], None)
+            except Exception as exc:
+                self.message(Gtk.MessageType.ERROR, "Imeshindikana kufungua %s" % app["name"], str(exc))
+
+        def install(self, card, app):
+            if app["type"] == "pwa":
+                try:
+                    pwa_install(app)
+                except Exception as exc:
+                    self.message(Gtk.MessageType.ERROR, "Imeshindikana kusakinisha %s" % app["name"], str(exc))
+                self.reload_state()
+                return
+            self._run(card, ["apt-get", "install", "-y", app["package"]], "Inasakinisha\u2026")
+
+        def remove(self, card, app):
+            if app["type"] == "pwa":
+                pwa_remove(app)
+                self.reload_state()
+                return
+            dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                    buttons=Gtk.ButtonsType.YES_NO, text="Ondoa %s?" % app["name"])
+            dlg.format_secondary_text("Programu itaondolewa kwenye kompyuta hii.")
+            resp = dlg.run()
+            dlg.destroy()
+            if resp == Gtk.ResponseType.YES:
+                self._run(card, ["apt-get", "remove", "-y", app["package"]], "Inaondoa\u2026")
+
+        def on_update_lists(self, _btn):
+            for card in self.cards:
+                card.set_busy(True, "Inasasisha orodha\u2026")
+
+            def worker():
+                rc, tail = run_privileged(["apt-get", "update"])
+                GLib.idle_add(self._lists_done, rc, tail)
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _lists_done(self, rc, tail):
+            for card in self.cards:
+                card.set_busy(False, "")
+            self.reload_state()
+            if rc != 0:
+                self.message(Gtk.MessageType.ERROR, "Imeshindikana kusasisha orodha", explain_failure(rc, tail))
+            return False
+
+        def _run(self, card, argv, text):
+            card.set_busy(True, text)
+
+            def worker():
+                rc, tail = run_privileged(argv, lambda line: GLib.idle_add(card.set_status, line))
+                GLib.idle_add(self._op_done, card, rc, tail)
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _op_done(self, card, rc, tail):
+            card.set_busy(False, "")
+            self.reload_state()
+            if rc != 0:
+                self.message(Gtk.MessageType.ERROR, "Imeshindikana: %s" % card.app["name"], explain_failure(rc, tail))
+            return False
+
+    return {"Card": Card, "StoreWindow": StoreWindow}
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

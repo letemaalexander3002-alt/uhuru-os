@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mafaili
+Name[sw]=Mafaili
+Comment=Vinjari mafaili na folda
+Comment[sw]=Vinjari mafaili na folda
+Exec=thunar
+Icon=system-file-manager
+Terminal=false
+StartupNotify=true
+Categories=System;FileTools;FileManager;
