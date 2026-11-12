@@ -79,6 +79,9 @@ at() { while [ $((SECONDS-START)) -lt "$1" ]; do sleep 1; done; }
 a_ret()  { key ret; }
 a_esc()  { key esc; }
 a_text() { key ctrl-a; typestr "$1"; key ret; }
+# v13.12: dirisha la tz (radiolist) halina cursor, kwa hiyo Enter haifanyi kitu. Njia zinabadilika kila jaribio (WIZ_TRY).
+a_tz()   { case "${WIZ_TRY:-1}" in 1) key esc ;; 2) key down; key ret ;; *) key alt-o ;; esac; }
+a_auto() { case "${WIZ_TRY:-1}" in 1) key esc ;; *) key ret ;; esac; }
 # wiz <hatua-sasa> <regex-ya-hatua-inayofuata> <kitendo> [hoja]: subiri hatua itokee, piga picha, tuma funguo,
 # thibitisha wizard imesogea; ikikwama rudia hadi mara 3. Inarudisha 0 sawa, 1 imekwama, 2 telemetry imesimama.
 wiz() {
@@ -88,7 +91,7 @@ wiz() {
     if [ $rc -ne 0 ]; then note "E2E wizard-step=$cur haikuonekana"; shot "wizard-$cur-HAIKUONEKANA"; return 1; fi
     sleep 1; shot "wizard-$cur"
     for try in 1 2 3; do
-        "$@"
+        WIZ_TRY=$try; "$@"
         wait_state " step=$nxt " 25; rc=$?
         [ $rc -eq 2 ] && return 2
         if [ $rc -eq 0 ]; then note "E2E wizard-step=$cur ok (jaribio $try)"; return 0; fi
@@ -120,14 +123,14 @@ e2e() {
     local spec cur nxt act arg
     for spec in \
         "welcome:tz:a_ret:" \
-        "tz:computer:a_ret:" \
+        "tz:computer:a_tz:" \
         "computer:fullname:a_ret:" \
         "fullname:username:a_text:tester" \
         "username:pass1:a_text:tester" \
         "pass1:pass2:a_text:uhurutest1" \
         "pass2:confirm:a_text:uhurutest1" \
         "confirm:autologin:a_esc:" \
-        "autologin:(creating|rc-[0-9]+|final|none):a_esc:"; do
+        "autologin:(creating|rc-[0-9]+|final|none):a_auto:"; do
         IFS=: read -r cur nxt act arg <<< "$spec"
         wiz "$cur" "$nxt" "$act" "$arg"; rc=$?
         [ $rc -eq 2 ] && return 2
@@ -137,7 +140,7 @@ e2e() {
     [ $rc -eq 2 ] && return 2
     if [ $rc -eq 0 ]; then note "E2E registered=yes"; else note "E2E registered=no"; shot 13-usajili-haukukamilika; fi
     # 3. Login screen mpya, kisha ingia na akaunti ya majaribio
-    wait_state 'sessions=lightdm, .*greeter=[1-9]' 120; rc=$?
+    wait_state 'sessions=([^ ]*,)?lightdm, .*greeter=[1-9]' 120; rc=$?
     [ $rc -eq 2 ] && return 2
     if [ $rc -ne 0 ]; then note "E2E greeter-after=no"; shot 14-login-screen-HAIKUONEKANA; return 0; fi
     note "E2E greeter-after=yes"; sleep 3; shot 14-login-screen
