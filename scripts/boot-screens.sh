@@ -52,21 +52,23 @@ wait_state() {
 #  A: andika password moja kwa moja.  B: chagua yote kwenye kisanduku, andika jina, Enter, kisha password.
 # Inarudisha: 0 imefanikiwa, 1 imeshindikana, 2 telemetry imesimama.
 greeter_login() {   # greeter_login <jina> <password> <regex-ya-mafanikio> <lebo>
+    # v13.13 njia B kwanza: login screen ya Uhuru OS inaonyesha kisanduku cha jina (hakuna orodha ya watumiaji).
     local u=$1 p=$2 ok=$3 tag=$4 rc
     wait_state 'greeter=[1-9]' 60; rc=$?
     [ $rc -eq 2 ] && return 2
     if [ $rc -ne 0 ]; then note "E2E greeter-visible=no ($tag)"; shot "login-$tag-greeter-HAIKUONEKANA"; return 1; fi
     sleep 3
-    typestr "$p"; key ret
-    wait_state "$ok" 30; rc=$?
-    [ $rc -eq 2 ] && return 2
-    if [ $rc -eq 0 ]; then note "E2E greeter-method=password-pekee ($tag)"; return 0; fi
-    shot "login-$tag-njia-A-imeshindikana"
-    key ctrl-a; typestr "$u"; key ret; sleep 3; typestr "$p"; key ret
+    key ctrl-a; typestr "$u"; key ret; sleep 4; typestr "$p"; key ret
     wait_state "$ok" 45; rc=$?
     [ $rc -eq 2 ] && return 2
     if [ $rc -eq 0 ]; then note "E2E greeter-method=jina-kisha-password ($tag)"; return 0; fi
     shot "login-$tag-njia-B-imeshindikana"
+    # Akiba: greeter inasubiri password ya mtumiaji aliyechaguliwa tayari (au ya jina lililokwisha andikwa)
+    sleep 4; key ctrl-a; typestr "$p"; key ret
+    wait_state "$ok" 30; rc=$?
+    [ $rc -eq 2 ] && return 2
+    if [ $rc -eq 0 ]; then note "E2E greeter-method=password-pekee ($tag)"; return 0; fi
+    shot "login-$tag-njia-A-imeshindikana"
     return 1
 }
 LIVE_UP='(sessions|xfceuser)=[^ ]*mtumiaji'
