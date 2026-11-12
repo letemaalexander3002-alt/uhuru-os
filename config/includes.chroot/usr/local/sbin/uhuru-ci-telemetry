@@ -1,45 +1,86 @@
 #!/bin/bash
 # Uhuru OS — telemetry ya CI: inaandika hali ya mfumo kwenye serial console kila sekunde 5.
 # Inafanya kazi TU kwenye QEMU ya CI (QEMU -smbios type=1,serial=UHURU_CI). Kwenye kompyuta halisi inatoka mara moja.
+# v13.9: kitanzi kikuu HAKIITI tena loginctl/systemctl/journalctl (zinaweza kuning'inia wakati wa login na kusimamisha
+#        telemetry yote). Kila amri ina timeout, na ripoti nzito (AUTH/DIAG) zinaendeshwa nyuma (background).
 DMI=${UHURU_TEST_DMI:-/sys/class/dmi/id/product_serial}
 SERIAL=${UHURU_TEST_SERIAL:-/dev/ttyS0}
 LOOPS=${UHURU_TEST_LOOPS:-0}
+SLEEP=${UHURU_TEST_SLEEP:-5}
+SESSDIR=${UHURU_TEST_SESSIONS:-/run/systemd/sessions}
 grep -q 'UHURU_CI' "$DMI" 2>/dev/null || exit 0
 exec >"$SERIAL" 2>&1
-n=0
+
+# Orodha ya watumiaji wa session, kwa kusoma faili za logind moja kwa moja (bila D-Bus).
+# Faili za *.ref ni FIFO (kuzisoma kunaning'inia), kwa hiyo tunasoma faili za kawaida tu.
+sessions() {
+    local f u out=""
+    for f in "$SESSDIR"/*; do
+        [ -f "$f" ] || continue
+        case "$f" in *.ref) continue ;; esac
+        u=$(sed -n 's/^USER=//p' "$f" 2>/dev/null | head -n 1)
+        [ -n "$u" ] && out="$out$u,"
+    done
+    printf '%s' "$out"
+}
+# Hesabu ya michakato. Mchoro "[l]ightdm..." unazuia pgrep isijihesabu yenyewe kupitia cmdline ya 'timeout'.
+cnt() { local c; c=$(timeout -k 1 3 pgrep "$@" 2>/dev/null); printf '%s' "${c:-0}"; }
+
+accounts() {
+    local u
+    printf 'UHURU-ACCOUNTS'
+    for u in $(timeout -k 1 3 getent passwd | awk -F: '$3>=1000 && $3<60000{print $1}'); do
+        printf ' %s=%s' "$u" "$(timeout -k 1 3 passwd -S "$u" 2>/dev/null | awk '{print $2}')"
+    done
+    printf '\n'
+}
+
+# Ripoti nzito: inaendeshwa nyuma, inaandikwa kwa printf moja ili isichanganyike na mistari ya STATE.
+report() {   # report <n> <auth:0|1> <diag:0|1>
+    local n=$1 auth=$2 dg=$3 buf="" a=""
+    d() { sed "s/^/UHURU-DIAG $1: /" | cut -c1-220; }
+    if [ "$auth" = 1 ]; then
+        a=$(timeout -k 1 8 journalctl -b -q --no-pager 2>/dev/null | grep -E 'pam_unix\(lightdm|authentication failure|uhuru-create-user' | tail -n 4 | sed 's/^/UHURU-AUTH /')
+        [ -n "$a" ] && buf="$buf$a"$'\n'
+    fi
+    if [ "$dg" = 1 ]; then
+        a=$(
+            echo "UHURU-DIAG-BEGIN n=$n"
+            timeout -k 1 4 loginctl list-sessions --no-legend 2>&1 | d loginctl
+            ps -eo user:12,comm 2>/dev/null | grep -E 'lightdm|Xorg|xfce4-session|xfwm4|xfdesktop|zenity|light-locker|systemd --user' | sort | uniq -c | d ps
+            echo "lightdm=$(timeout -k 1 4 systemctl is-active lightdm 2>/dev/null) live-config=$(timeout -k 1 4 systemctl is-active live-config 2>/dev/null) live-prep=$(timeout -k 1 4 systemctl is-active uhuru-live-prep 2>/dev/null)" | d units
+            ls /usr/share/xsessions 2>&1 | tr '\n' ' ' | d xsessions
+            grep -rn -E 'autologin|user-session|greeter-setup' /etc/lightdm/ 2>/dev/null | grep -v ':#' | d lightdm-conf
+            tail -n 14 /var/log/lightdm/lightdm.log 2>&1 | d lightdm.log
+            grep -E '\(EE\)|rror' /var/log/lightdm/x-0.log 2>/dev/null | tail -n 5 | d x-0.log
+            tail -n 6 /var/log/lightdm/seat0-greeter.log 2>&1 | d greeter.log
+            tail -n 10 /home/*/.xsession-errors 2>/dev/null | d xsession-errors
+            timeout -k 1 8 journalctl -b -q --no-pager -u lightdm 2>/dev/null | tail -n 8 | d journal-lightdm
+            timeout -k 1 8 journalctl -b -q --no-pager 2>/dev/null | grep -E 'xfce4-session|Failed to start|Failed with result|session.*(fail|abort)|pam_systemd' | tail -n 8 | d journal-session
+            echo "UHURU-DIAG-END"
+        )
+        buf="$buf$a"$'\n'
+    fi
+    printf '%s' "$buf"
+}
+
+n=0; RPID=""
 while :; do
     n=$((n+1))
-    sess=$(loginctl list-sessions --no-legend 2>/dev/null | awk '{printf "%s,", $3}')
-    xu=$(ps -C xfce4-session -o user= 2>/dev/null | sort -u | tr '\n' ',')
+    sess=$(sessions)
+    xu=$(timeout -k 1 3 ps -C xfce4-session -o user= 2>/dev/null | sort -u | tr '\n' ',')
+    al=$(timeout -k 1 3 grep -rhs '^autologin-' /etc/lightdm/ | tr '\n' '|')
     printf 'UHURU-STATE n=%s sessions=%s xfceuser=%s zenity=%s greeter=%s xfce=%s locker=%s done=%s autologin=%s\n' \
-        "$n" "$sess" "$xu" "$(pgrep -xc zenity)" "$(pgrep -fc lightdm-gtk-greeter)" "$(pgrep -xc xfce4-session)" \
-        "$(pgrep -xc light-locker)" "$([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)" \
-        "$(grep -rhs '^autologin-' /etc/lightdm/ | tr '\n' '|')"
-    if [ $((n % 4)) -eq 1 ]; then
-        printf 'UHURU-ACCOUNTS'
-        for u in $(getent passwd | awk -F: '$3>=1000 && $3<60000{print $1}'); do
-            printf ' %s=%s' "$u" "$(passwd -S "$u" 2>/dev/null | awk '{print $2}')"
-        done
-        printf '\n'
-        journalctl -b -q --no-pager 2>/dev/null | grep -E 'pam_unix\(lightdm|authentication failure|uhuru-create-user' | tail -4 | sed 's/^/UHURU-AUTH /'
+        "$n" "$sess" "$xu" "$(cnt -xc zenity)" "$(cnt -fc '[l]ightdm-gtk-greeter')" "$(cnt -xc xfce4-session)" \
+        "$(cnt -xc light-locker)" "$([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)" "$al"
+    [ $((n % 2)) -eq 1 ] && accounts
+    A=0; D=0
+    [ $((n % 4)) -eq 1 ] && A=1
+    { [ "$n" -eq 2 ] || [ $((n % 12)) -eq 0 ]; } && D=1
+    if [ $((A + D)) -gt 0 ] && { [ -z "$RPID" ] || ! kill -0 "$RPID" 2>/dev/null; }; then
+        report "$n" "$A" "$D" &
+        RPID=$!
     fi
-    # Uchunguzi wa kina (mara chache): kwa nini session haianzi?
-    if [ "$n" -eq 2 ] || [ $((n % 12)) -eq 0 ]; then
-        d() { sed "s/^/UHURU-DIAG $1: /" | cut -c1-220; }
-        echo "UHURU-DIAG-BEGIN n=$n"
-        loginctl list-sessions --no-legend 2>&1 | d loginctl
-        ps -eo user:12,comm 2>/dev/null | grep -E 'lightdm|Xorg|xfce4-session|xfwm4|xfdesktop|zenity|light-locker|systemd --user' | sort | uniq -c | d ps
-        echo "lightdm=$(systemctl is-active lightdm) live-config=$(systemctl is-active live-config) live-prep=$(systemctl is-active uhuru-live-prep)" | d units
-        ls /usr/share/xsessions 2>&1 | tr '\n' ' ' | d xsessions
-        grep -rn -E 'autologin|user-session|greeter-setup' /etc/lightdm/ 2>/dev/null | grep -v ':#' | d lightdm-conf
-        tail -n 14 /var/log/lightdm/lightdm.log 2>&1 | d lightdm.log
-        grep -E '\(EE\)|rror' /var/log/lightdm/x-0.log 2>/dev/null | tail -n 5 | d x-0.log
-        tail -n 6 /var/log/lightdm/seat0-greeter.log 2>&1 | d greeter.log
-        tail -n 10 /home/*/.xsession-errors 2>/dev/null | d xsession-errors
-        journalctl -b -q --no-pager -u lightdm 2>/dev/null | tail -n 8 | d journal-lightdm
-        journalctl -b -q --no-pager 2>/dev/null | grep -E 'xfce4-session|Failed to start|Failed with result|session.*(fail|abort)|pam_systemd' | tail -n 8 | d journal-session
-        echo "UHURU-DIAG-END"
-    fi
-    [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ] && exit 0
-    sleep ${UHURU_TEST_SLEEP:-5}
+    if [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ]; then wait; exit 0; fi
+    sleep "$SLEEP"
 done
