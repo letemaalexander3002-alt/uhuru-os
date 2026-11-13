@@ -1,0 +1,16 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Uhuru Share
+Name[sw]=Uhuru Share
+GenericName=Share apps offline
+GenericName[sw]=Shiriki programu bila mtandao
+Comment=Share apps and updates over USB or LAN without internet
+Comment[sw]=Shiriki programu na masasisho kwa USB au LAN bila intaneti
+Exec=uhuru-share --gui
+Icon=uhuru-share
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+Keywords=share;usb;lan;offline;updates;shiriki;programu;
+Keywords[sw]=shiriki;programu;usb;lan;bila;mtandao;
+StartupWMClass=uhuru-share

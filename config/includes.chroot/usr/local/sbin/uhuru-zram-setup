@@ -1,0 +1,27 @@
+#!/bin/sh
+# Uhuru OS awamu ya 5: swap ya zram (RAM iliyobanwa) kwa kompyuta zenye RAM ndogo. Haivunji boot: kila kosa linaishia exit 0.
+# start: weka zram; stop: ondoa.
+ACTION=${1:-start}
+if [ "$ACTION" = stop ]; then
+    swapoff /dev/zram0 2>/dev/null || true
+    [ -w /sys/block/zram0/reset ] && echo 1 > /sys/block/zram0/reset 2>/dev/null
+    exit 0
+fi
+MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)
+[ -n "$MEM_KB" ] || exit 0
+# RAM zaidi ya 8GB haihitaji zram
+[ "$MEM_KB" -le 8388608 ] || { echo "uhuru-zram: RAM kubwa, naruka"; exit 0; }
+grep -q '^/dev/zram0' /proc/swaps 2>/dev/null && { echo "uhuru-zram: tayari inatumika"; exit 0; }
+[ -e /sys/block/zram0 ] || modprobe zram 2>/dev/null || { echo "uhuru-zram: moduli ya zram haipo"; exit 0; }
+[ -e /sys/block/zram0 ] || { echo "uhuru-zram: zram0 haipo"; exit 0; }
+echo 1 > /sys/block/zram0/reset 2>/dev/null
+for algo in zstd lz4 lzo-rle; do
+    echo "$algo" > /sys/block/zram0/comp_algorithm 2>/dev/null && break
+done
+# ukubwa: nusu ya RAM (data iliyobanwa huchukua nafasi ndogo kuliko hiyo)
+echo $((MEM_KB * 1024 / 2)) > /sys/block/zram0/disksize 2>/dev/null || { echo "uhuru-zram: disksize imeshindwa"; exit 0; }
+mkswap /dev/zram0 >/dev/null 2>&1 || { echo "uhuru-zram: mkswap imeshindwa"; exit 0; }
+swapon -p 100 /dev/zram0 2>/dev/null || { echo "uhuru-zram: swapon imeshindwa"; exit 0; }
+sysctl -qw vm.swappiness=100 vm.page-cluster=0 2>/dev/null
+echo "uhuru-zram: swap ya zram imewashwa ($((MEM_KB / 2048)) MB)"
+exit 0

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Uhuru OS awamu ya 5: offline-first, Uhuru Share, zram na ukaguzi wa vifaa.
+# Inaendeshwa baada ya hook ya awamu ya 4 (9990). Haigusi taskbar, Start menu wala LGT Store.
+set -e
+chmod 0755 /usr/local/bin/uhuru-share /usr/local/bin/uhuru-hwcheck /usr/local/sbin/uhuru-zram-setup
+
+# zram: washa kila boot
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/uhuru-zram.service /etc/systemd/system/multi-user.target.wants/uhuru-zram.service
+
+# offline-first: boot isisubiri mtandao (mask kwa symlink ya /dev/null)
+for u in NetworkManager-wait-online.service systemd-networkd-wait-online.service; do
+    ln -sf /dev/null "/etc/systemd/system/$u"
+done
+
+mkdir -p /var/cache/uhuru-share/received /var/lib/uhuru-share/inbox
+chmod 0755 /var/cache/uhuru-share /var/cache/uhuru-share/received /var/lib/uhuru-share /var/lib/uhuru-share/inbox
+
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true; fi
+
+# uthibitisho wa ujenzi (hautavunja build; telemetry ya CI inaripoti tena ndani ya ISO)
+test -x /usr/local/bin/uhuru-share
+python3 -c "import ast; ast.parse(open('/usr/local/bin/uhuru-share').read()); ast.parse(open('/usr/local/bin/uhuru-hwcheck').read())"
+timeout 90 /usr/local/bin/uhuru-share --selftest || echo "uhuru-phase5: ONYO: uhuru-share --selftest imeshindwa wakati wa build"
+echo "uhuru-phase5: Uhuru Share, zram na mipangilio ya offline zimewekwa"

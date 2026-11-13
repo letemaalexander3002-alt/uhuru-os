@@ -1,0 +1,1046 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Uhuru Share - shiriki programu na masasisho kati ya kompyuta bila intaneti (USB au LAN).
+
+  uhuru-share --gui                       fungua dirisha la Uhuru Share
+  uhuru-share pack DEST --cache           tengeneza kifurushi kutoka programu ulizokwisha pakua
+  uhuru-share pack DEST --files a.deb ..  tengeneza kifurushi kutoka faili ulizonazo
+  uhuru-share pack DEST PKG [PKG ..]      pakua PKG pamoja na utegemezi wake (inahitaji mtandao)
+  uhuru-share verify DIR                  kagua kifurushi (sha256 ya kila faili)
+  uhuru-share import DIR [--dry-run]      sakinisha kutoka kifurushi (USB/folda)
+  uhuru-share serve DIR [--port N]        shiriki kifurushi kwa LAN
+  uhuru-share discover                    tafuta kompyuta zinazoshiriki kwenye LAN
+  uhuru-share fetch URL DEST              pokea kifurushi kutoka kompyuta nyingine
+  uhuru-share --selftest                  jaribio la ndani (kwa CI)
+  uhuru-share --smoke                     jenga dirisha bila kulionyesha (kwa CI)
+
+USALAMA: sha256 inagundua faili zilizoharibika au zilizobadilishwa njiani, lakini haithibitishi
+mtoaji ni nani. Programu zinasakinishwa kama root, kwa hiyo sakinisha tu kutoka chanzo unachokiamini.
+Ulinganishe "alama ya kifurushi" kwa mdomo au simu na mtoaji kabla ya kusakinisha.
+"""
+import argparse
+import hashlib
+import http.server
+import json
+import os
+import re
+import shutil
+import socket
+import socketserver
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+import urllib.request
+
+VERSION = "1.0"
+MANIFEST = "uhuru-share.json"
+FORMAT = 1
+PORT = 8765
+DISCO_PORT = 8766
+RECEIVED = os.environ.get("UHURU_SHARE_RECEIVED", "/var/cache/uhuru-share/received")
+INBOX = os.environ.get("UHURU_SHARE_INBOX", "/var/lib/uhuru-share/inbox")
+APT_CACHE = os.environ.get("UHURU_SHARE_APT_CACHE", "/var/cache/apt/archives")
+# jina la faili: herufi salama tu, hakuna '/', hakuna '..'. '%' inaruhusiwa (apt huandika ':' kama %3a).
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+~%-]{0,200}\.deb$")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+MAX_FILE = 4 * 1024 ** 3
+MAX_MANIFEST = 8 * 1024 ** 2
+
+
+class ShareError(Exception):
+    pass
+
+
+def say(msg):
+    print(msg, flush=True)
+
+
+# ------------------------------------------------------------------ zana ndogo
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def run(argv, **kw):
+    kw.setdefault("stdout", subprocess.PIPE)
+    kw.setdefault("stderr", subprocess.DEVNULL)
+    kw.setdefault("universal_newlines", True)
+    kw.setdefault("timeout", 120)
+    try:
+        return subprocess.run(argv, **kw)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return subprocess.CompletedProcess(argv, 127, "", str(exc))
+
+
+def os_codename():
+    try:
+        with open("/etc/os-release", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("VERSION_CODENAME="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return ""
+
+
+def native_arch():
+    out = run(["dpkg", "--print-architecture"]).stdout.strip()
+    return out or "amd64"
+
+
+def foreign_archs():
+    return set(run(["dpkg", "--print-foreign-architectures"]).stdout.split())
+
+
+def deb_info(path):
+    """(Package, Version, Architecture) kutoka kwenye faili la .deb lenyewe."""
+    res = run(["dpkg-deb", "--field", path, "Package", "Version", "Architecture"])
+    if res.returncode != 0:
+        raise ShareError("si faili halali la .deb: %s" % os.path.basename(path))
+    info = {}
+    for line in res.stdout.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            info[k.strip()] = v.strip()
+    for key in ("Package", "Version", "Architecture"):
+        if not info.get(key):
+            raise ShareError("faili halina '%s': %s" % (key, os.path.basename(path)))
+    return info["Package"], info["Version"], info["Architecture"]
+
+
+def fmt_size(n):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return "%d %s" % (n, unit) if unit == "B" else "%.1f %s" % (n, unit)
+        n /= 1024.0
+
+
+# ------------------------------------------------------------------ manifest
+
+
+def manifest_id(raw):
+    """Alama fupi ya kifurushi (kwa kulinganisha kwa mdomo): herufi 12 za sha256 ya manifest."""
+    d = hashlib.sha256(raw).hexdigest()[:12]
+    return "%s-%s-%s" % (d[:4], d[4:8], d[8:12])
+
+
+def validate_manifest(m):
+    if not isinstance(m, dict) or m.get("format") != FORMAT:
+        raise ShareError("muundo wa kifurushi haujulikani")
+    files = m.get("files")
+    if not isinstance(files, list) or not files:
+        raise ShareError("kifurushi hakina faili")
+    seen = set()
+    for f in files:
+        if not isinstance(f, dict):
+            raise ShareError("kipengele kibovu kwenye orodha")
+        name, size, sha = f.get("name"), f.get("size"), f.get("sha256")
+        if not isinstance(name, str) or not NAME_RE.match(name):
+            raise ShareError("jina la faili si salama: %r" % (name,))
+        if name in seen:
+            raise ShareError("jina limerudiwa: " + name)
+        seen.add(name)
+        if not isinstance(size, int) or size < 0 or size > MAX_FILE:
+            raise ShareError("ukubwa si sahihi: " + name)
+        if not isinstance(sha, str) or not SHA_RE.match(sha):
+            raise ShareError("sha256 si sahihi: " + name)
+    return m
+
+
+def load_manifest(directory):
+    path = os.path.join(directory, MANIFEST)
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read(MAX_MANIFEST + 1)
+    except OSError:
+        raise ShareError("%s haipo kwenye %s (si kifurushi cha Uhuru Share)" % (MANIFEST, directory))
+    if len(raw) > MAX_MANIFEST:
+        raise ShareError("manifest ni kubwa kupita kiasi")
+    try:
+        m = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        raise ShareError("manifest imeharibika")
+    return validate_manifest(m), raw
+
+
+def scan_dir(directory):
+    entries = []
+    for name in sorted(os.listdir(directory)):
+        path = os.path.join(directory, name)
+        if not NAME_RE.match(name) or not os.path.isfile(path):
+            continue
+        pkg, ver, arch = deb_info(path)
+        entries.append({"name": name, "size": os.path.getsize(path), "sha256": sha256_file(path),
+                        "package": pkg, "version": ver, "arch": arch})
+    return entries
+
+
+def write_manifest(directory, label=""):
+    entries = scan_dir(directory)
+    if not entries:
+        raise ShareError("hakuna faili za .deb kwenye " + directory)
+    m = {"format": FORMAT, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+         "host": socket.gethostname(), "os": os_codename(), "arch": native_arch(),
+         "label": label or socket.gethostname(), "files": entries}
+    raw = json.dumps(m, indent=1, ensure_ascii=False).encode("utf-8")
+    tmp = os.path.join(directory, MANIFEST + ".part")
+    with open(tmp, "wb") as fh:
+        fh.write(raw)
+    os.replace(tmp, os.path.join(directory, MANIFEST))
+    return m, raw
+
+
+def verify_dir(directory, manifest, check_hash=True):
+    """Orodha ya matatizo (tupu = sawa)."""
+    problems = []
+    for f in manifest["files"]:
+        path = os.path.join(directory, f["name"])
+        if not os.path.isfile(path):
+            problems.append("haipo: " + f["name"])
+            continue
+        if os.path.getsize(path) != f["size"]:
+            problems.append("ukubwa tofauti: " + f["name"])
+            continue
+        if check_hash and sha256_file(path) != f["sha256"]:
+            problems.append("sha256 haikubaliani (faili limeharibika au kubadilishwa): " + f["name"])
+    return problems
+
+
+# ------------------------------------------------------------------ pack
+
+
+def parse_depends_names(text):
+    """Majina ya vifurushi kutoka 'apt-cache depends --recurse' (virtual <..> zinaachwa)."""
+    names, seen = [], set()
+    for line in text.splitlines():
+        if line and not line[0].isspace() and re.match(r"^[a-z0-9][a-z0-9+.\-]*(:[a-z0-9\-]+)?$", line):
+            if line not in seen:
+                seen.add(line)
+                names.append(line)
+    return names
+
+
+def _copy_debs(sources, dest, log):
+    total = sum(os.path.getsize(s) for s in sources)
+    free = shutil.disk_usage(dest).free
+    if total > free:
+        raise ShareError("nafasi haitoshi: inahitajika %s, ipo %s" % (fmt_size(total), fmt_size(free)))
+    n = 0
+    for src in sources:
+        target = os.path.join(dest, os.path.basename(src))
+        if os.path.isfile(target) and os.path.getsize(target) == os.path.getsize(src):
+            continue
+        shutil.copyfile(src, target)
+        n += 1
+        log("nakili: " + os.path.basename(src))
+    return n
+
+
+def pack(dest, mode, items, label="", log=say):
+    os.makedirs(dest, exist_ok=True)
+    if mode == "cache":
+        sources = []
+        for d in (APT_CACHE, RECEIVED):
+            if os.path.isdir(d):
+                sources += [os.path.join(d, n) for n in sorted(os.listdir(d)) if NAME_RE.match(n)]
+        if not sources:
+            raise ShareError("hakuna programu zilizopakuliwa kwenye kompyuta hii (cache tupu)")
+        _copy_debs(sources, dest, log)
+    elif mode == "files":
+        for p in items:
+            if not os.path.isfile(p) or not NAME_RE.match(os.path.basename(p)):
+                raise ShareError("faili batili: " + p)
+        _copy_debs(items, dest, log)
+    elif mode == "packages":
+        for p in items:
+            if not re.match(r"^[a-z0-9][a-z0-9+.\-]*$", p):
+                raise ShareError("jina la kifurushi si sahihi: " + p)
+        log("natafuta utegemezi wa: " + " ".join(items))
+        dep = run(["apt-cache", "depends", "--recurse", "--no-recommends", "--no-suggests", "--no-conflicts",
+                   "--no-breaks", "--no-replaces", "--no-enhances"] + items, timeout=300)
+        if dep.returncode != 0:
+            raise ShareError("apt-cache imeshindwa (kifurushi hakipo?)")
+        names = parse_depends_names(dep.stdout)
+        log("vifurushi %d vitapakuliwa (hii inahitaji mtandao na inaweza kuchukua muda)" % len(names))
+        tmp = tempfile.mkdtemp(prefix="uhuru-share-")
+        try:
+            res = run(["apt-get", "download", "-q"] + names, cwd=tmp, timeout=3600, stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT)
+            if res.returncode != 0:
+                log("baadhi hazikupatikana kwa pamoja; najaribu moja moja...")
+                for nm in names:
+                    r = run(["apt-get", "download", "-q", nm], cwd=tmp, timeout=900)
+                    if r.returncode != 0:
+                        log("ruka (haipatikani): " + nm)
+            got = [os.path.join(tmp, n) for n in sorted(os.listdir(tmp)) if NAME_RE.match(n)]
+            if not got:
+                raise ShareError("hakuna kilichopakuliwa. Je, kuna mtandao?")
+            _copy_debs(got, dest, log)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    else:
+        raise ShareError("hali isiyojulikana")
+    m, raw = write_manifest(dest, label)
+    log("kifurushi tayari: faili %d, alama ya kifurushi: %s" % (len(m["files"]), manifest_id(raw)))
+    return m, raw
+
+
+# ------------------------------------------------------------------ mpango wa usakinishaji
+
+
+def installed_version(pkg, arch):
+    spec = pkg if arch == "all" else "%s:%s" % (pkg, arch)
+    res = run(["dpkg-query", "-W", "-f=${Version}\t${db:Status-Abbrev}\n", spec])
+    if res.returncode != 0:
+        return None
+    for line in res.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[1].startswith("ii"):
+            return parts[0]
+    return None
+
+
+def plan_install(directory, manifest):
+    """Orodha ya (faili, kifurushi, toleo, hatua, sababu). hatua = install | skip."""
+    native, foreign = native_arch(), foreign_archs()
+    plan = []
+    for f in manifest["files"]:
+        path = os.path.join(directory, f["name"])
+        pkg, ver, arch = deb_info(path)
+        if arch != "all" and arch != native and arch not in foreign:
+            plan.append((f["name"], pkg, ver, "skip", "usanifu %s hauendani" % arch))
+            continue
+        cur = installed_version(pkg, arch)
+        if cur is not None and run(["dpkg", "--compare-versions", cur, "ge", ver]).returncode == 0:
+            plan.append((f["name"], pkg, ver, "skip", "tayari ipo (%s)" % cur))
+            continue
+        plan.append((f["name"], pkg, ver, "install", "mpya" if cur is None else "sasisha kutoka %s" % cur))
+    return plan
+
+
+def codename_warning(manifest):
+    mine, theirs = os_codename(), manifest.get("os") or ""
+    if mine and theirs and mine != theirs:
+        return "Kifurushi kimetengenezwa kwa Debian '%s' lakini hii ni '%s'." % (theirs, mine)
+    return ""
+
+
+def root_install(directory, force=False, log=say):
+    """Inaendeshwa kama root. Inanakili kwenye folda ya root, inakagua tena, kisha inasakinisha."""
+    if os.geteuid() != 0:
+        raise ShareError("inahitaji ruhusa ya msimamizi (root)")
+    manifest, raw = load_manifest(directory)
+    warn = codename_warning(manifest)
+    if warn and not force:
+        raise ShareError(warn + " Sakinisha tu ukiwa na uhakika (--force).")
+    os.makedirs(INBOX, mode=0o755, exist_ok=True)
+    os.chmod(INBOX, 0o755)
+    work = tempfile.mkdtemp(prefix="in-", dir=INBOX)
+    os.chmod(work, 0o755)
+    try:
+        for f in manifest["files"]:
+            shutil.copyfile(os.path.join(directory, f["name"]), os.path.join(work, f["name"]))
+        problems = verify_dir(work, manifest)
+        if problems:
+            raise ShareError("ukaguzi umeshindwa: " + "; ".join(problems[:3]))
+        plan = plan_install(work, manifest)
+        todo = [p for p in plan if p[3] == "install"]
+        if not todo:
+            log("Hakuna kipya cha kusakinisha: kila kitu tayari kipo.")
+            return 0
+        log("alama ya kifurushi: " + manifest_id(raw))
+        for p in todo:
+            log("nasakinisha: %s %s (%s)" % (p[1], p[2], p[4]))
+        cmd = ["env", "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C", "apt-get", "install", "-y", "--no-download",
+               "--no-install-recommends", "-o", "Dpkg::Options::=--force-confdef",
+               "-o", "Dpkg::Options::=--force-confold"] + [os.path.join(work, p[0]) for p in todo]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        tail = []
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                tail = (tail + [line])[-6:]
+                log(line)
+        rc = proc.wait()
+        if rc != 0:
+            hint = "Utegemezi unakosekana: tengeneza kifurushi kwa 'pack' (inajumuisha utegemezi)." if any(
+                "depends" in t.lower() or "unmet" in t.lower() for t in tail) else "msimbo %d" % rc
+            raise ShareError("usakinishaji umeshindikana: " + hint)
+        os.makedirs(RECEIVED, mode=0o755, exist_ok=True)
+        for p in todo:  # zihifadhiwe ili zishirikiwe tena na kompyuta hii
+            shutil.copyfile(os.path.join(work, p[0]), os.path.join(RECEIVED, p[0]))
+        log("Imekamilika: vifurushi %d vimesakinishwa." % len(todo))
+        return 0
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+# ------------------------------------------------------------------ LAN: serve / discover / fetch
+
+
+def local_ips():
+    ips = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("10.255.255.255", 1))
+        ips.add(s.getsockname()[0])
+        s.close()
+    except OSError:
+        pass
+    return sorted(i for i in ips if not i.startswith("127."))
+
+
+def make_handler(root, manifest):
+    allowed = {f["name"] for f in manifest["files"]}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "UhuruShare/" + VERSION
+
+        def log_message(self, fmt, *args):
+            if getattr(self.server, "verbose", False):
+                sys.stderr.write("%s %s\n" % (self.client_address[0], fmt % args))
+
+        def do_GET(self):
+            name = urllib.parse.unquote(self.path.split("?", 1)[0]).lstrip("/")
+            if name != MANIFEST and name not in allowed:
+                self.send_error(404)
+                return
+            path = os.path.join(root, name)
+            try:
+                size = os.path.getsize(path)
+                fh = open(path, "rb")
+            except OSError:
+                self.send_error(404)
+                return
+            with fh:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                shutil.copyfileobj(fh, self.wfile, 1024 * 1024)
+
+    return Handler
+
+
+class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def start_server(directory, port=PORT, bind="0.0.0.0", announce=True, verbose=False):
+    """Inarudisha (server, thread, manifest, raw). Mtoaji: server.shutdown() kuisimamisha."""
+    manifest, raw = load_manifest(directory)
+    problems = verify_dir(directory, manifest, check_hash=False)
+    if problems:
+        raise ShareError("kifurushi hakijakamilika: " + "; ".join(problems[:3]))
+    srv = _Server((bind, port), make_handler(directory, manifest))
+    srv.verbose = verbose
+    srv.stop_event = threading.Event()
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+    if announce:
+        threading.Thread(target=_announce_loop, args=(srv, manifest, raw), daemon=True).start()
+    return srv, th, manifest, raw
+
+
+def stop_server(srv):
+    srv.stop_event.set()
+    srv.shutdown()
+    srv.server_close()
+
+
+def _announce_loop(srv, manifest, raw):
+    msg = json.dumps({"uhuru-share": 1, "port": srv.server_address[1], "label": str(manifest.get("label", ""))[:60],
+                      "host": socket.gethostname()[:60], "id": manifest_id(raw)}).encode("utf-8")
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    except OSError:
+        return
+    while not srv.stop_event.is_set():
+        try:
+            s.sendto(msg, ("255.255.255.255", DISCO_PORT))
+        except OSError:
+            pass
+        srv.stop_event.wait(3)
+    s.close()
+
+
+def discover(seconds=5):
+    """Orodha ya {url, label, host, id} za kompyuta zinazoshiriki (best-effort)."""
+    found = {}
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("", DISCO_PORT))
+    except OSError:
+        return []
+    s.settimeout(0.5)
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            data, addr = s.recvfrom(512)
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        try:
+            d = json.loads(data.decode("utf-8"))
+            port = int(d["port"])
+            if d.get("uhuru-share") != 1 or not 1 <= port <= 65535:
+                continue
+        except (ValueError, KeyError, TypeError):
+            continue
+        url = "http://%s:%d" % (addr[0], port)
+        found[url] = {"url": url, "label": str(d.get("label", ""))[:60], "host": str(d.get("host", ""))[:60],
+                      "id": str(d.get("id", ""))[:20]}
+    s.close()
+    return list(found.values())
+
+
+def _http_get(url, limit, timeout=20):
+    req = urllib.request.Request(url, headers={"User-Agent": "UhuruShare/" + VERSION})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def fetch(url, dest, log=say):
+    if "://" not in url:
+        url = "http://" + url
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ShareError("anwani si sahihi: " + url)
+    base = url.rstrip("/")
+    os.makedirs(dest, exist_ok=True)
+    try:
+        with _http_get(base + "/" + MANIFEST, MAX_MANIFEST) as resp:
+            raw = resp.read(MAX_MANIFEST + 1)
+    except (OSError, ValueError) as exc:
+        raise ShareError("siwezi kuunganisha na %s (%s)" % (base, exc))
+    if len(raw) > MAX_MANIFEST:
+        raise ShareError("manifest ni kubwa kupita kiasi")
+    try:
+        manifest = validate_manifest(json.loads(raw.decode("utf-8")))
+    except ValueError:
+        raise ShareError("manifest imeharibika")
+    log("alama ya kifurushi: %s  (linganisha na mtoaji)" % manifest_id(raw))
+    total = sum(f["size"] for f in manifest["files"])
+    if total > shutil.disk_usage(dest).free:
+        raise ShareError("nafasi haitoshi: inahitajika " + fmt_size(total))
+    for i, f in enumerate(manifest["files"], 1):
+        target = os.path.join(dest, f["name"])
+        if os.path.isfile(target) and os.path.getsize(target) == f["size"] and sha256_file(target) == f["sha256"]:
+            log("(%d/%d) tayari ipo: %s" % (i, len(manifest["files"]), f["name"]))
+            continue
+        log("(%d/%d) napokea: %s (%s)" % (i, len(manifest["files"]), f["name"], fmt_size(f["size"])))
+        part = target + ".part"
+        h, got = hashlib.sha256(), 0
+        try:
+            with _http_get(base + "/" + urllib.parse.quote(f["name"]), f["size"]) as resp, open(part, "wb") as out:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > f["size"]:
+                        raise ShareError("faili ni kubwa kuliko lilivyotangazwa: " + f["name"])
+                    h.update(chunk)
+                    out.write(chunk)
+        except (OSError, ValueError) as exc:
+            if os.path.exists(part):
+                os.remove(part)
+            raise ShareError("kupokea %s kumeshindikana (%s)" % (f["name"], exc))
+        except ShareError:
+            if os.path.exists(part):
+                os.remove(part)
+            raise
+        if got != f["size"] or h.hexdigest() != f["sha256"]:
+            os.remove(part)
+            raise ShareError("faili limeharibika njiani: " + f["name"])
+        os.replace(part, target)
+    with open(os.path.join(dest, MANIFEST), "wb") as fh:
+        fh.write(raw)
+    log("Imekamilika: faili %d zimepokelewa na kukaguliwa." % len(manifest["files"]))
+    return manifest, raw
+
+
+# ------------------------------------------------------------------ selftest
+
+
+def _build_test_deb(workdir, name, version):
+    root = os.path.join(workdir, "src-" + name)
+    os.makedirs(os.path.join(root, "DEBIAN"))
+    os.chmod(os.path.join(root, "DEBIAN"), 0o755)  # dpkg-deb inakataa ruhusa 700 (umask ya Termux)
+    os.makedirs(os.path.join(root, "usr", "share", "uhuru-selftest"))
+    with open(os.path.join(root, "DEBIAN", "control"), "w") as fh:
+        fh.write("Package: %s\nVersion: %s\nArchitecture: all\nMaintainer: Uhuru <noreply@example.invalid>\n"
+                 "Description: Uhuru Share selftest (haisakinishwi)\n" % (name, version))
+    with open(os.path.join(root, "usr", "share", "uhuru-selftest", name), "w") as fh:
+        fh.write("uhuru share selftest " + name + "\n")
+    out = os.path.join(workdir, "%s_%s_all.deb" % (name, version))
+    res = run(["dpkg-deb", "--build", "--root-owner-group", root, out], stderr=subprocess.PIPE)
+    if res.returncode != 0 or not os.path.isfile(out):
+        res = run(["dpkg-deb", "--build", root, out], stderr=subprocess.PIPE)
+    if not os.path.isfile(out):
+        raise ShareError("dpkg-deb --build imeshindwa: " + (res.stderr or "").strip()[-60:])
+    return out
+
+
+def selftest():
+    os.umask(0o022)
+    tmp = tempfile.mkdtemp(prefix="uhuru-share-selftest-")
+    quiet = lambda _m: None  # noqa: E731
+    step = "start"
+    try:
+        step = "dpkg-deb"
+        if not shutil.which("dpkg-deb"):
+            raise ShareError("no-dpkg-deb")
+        debs = [_build_test_deb(tmp, "uhuru-selftest-aa", "1.0"), _build_test_deb(tmp, "uhuru-selftest-bb", "2.0")]
+        step = "pack"
+        bundle = os.path.join(tmp, "bundle")
+        m, _raw = pack(bundle, "files", debs, "selftest", quiet)
+        if len(m["files"]) != 2:
+            raise ShareError("pack")
+        step = "verify"
+        m2, _ = load_manifest(bundle)
+        if verify_dir(bundle, m2):
+            raise ShareError("verify")
+        step = "tamper"
+        bad = os.path.join(tmp, "bad")
+        shutil.copytree(bundle, bad)
+        victim = os.path.join(bad, m2["files"][0]["name"])
+        with open(victim, "r+b") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(size // 2)
+            byte = fh.read(1)
+            fh.seek(size // 2)
+            fh.write(bytes([(byte[0] ^ 0xFF)]))
+        if not verify_dir(bad, m2):
+            raise ShareError("tamper-haikugunduliwa")
+        step = "traversal"
+        evil = json.loads(json.dumps(m2))
+        evil["files"][0]["name"] = "../evil.deb"
+        try:
+            validate_manifest(evil)
+            raise ShareError("traversal-imekubaliwa")
+        except ShareError as exc:
+            if "traversal" in str(exc):
+                raise
+        step = "plan"
+        plan = plan_install(bundle, m2)
+        if len([p for p in plan if p[3] == "install"]) != 2:
+            raise ShareError("plan")
+        step = "lan"
+        srv, _th, _m, _r = start_server(bundle, port=0, bind="127.0.0.1", announce=False)
+        try:
+            port = srv.server_address[1]
+            dest = os.path.join(tmp, "received")
+            fetch("http://127.0.0.1:%d" % port, dest, quiet)
+            m3, _ = load_manifest(dest)
+            if verify_dir(dest, m3) or {f["sha256"] for f in m3["files"]} != {f["sha256"] for f in m2["files"]}:
+                raise ShareError("lan-verify")
+            step = "lan-404"
+            try:
+                _http_get("http://127.0.0.1:%d/etc/passwd" % port, 100).read()
+                raise ShareError("lan-serve-nje-ya-orodha")
+            except ShareError:
+                raise
+            except OSError:
+                pass
+        finally:
+            stop_server(srv)
+        print("SELFTEST-OK packs=2 verify=ok tamper=ok traversal=ok plan=ok lan=ok")
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        print("SELFTEST-FAIL step=%s %s" % (step, str(exc).replace(" ", "_")[:40]))
+        return 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ------------------------------------------------------------------ GUI
+
+
+def gui_main(smoke=False):
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk, GLib
+    except Exception as exc:  # noqa: BLE001
+        print("SMOKE-FAIL import %s" % str(exc).replace(" ", "_")[:60])
+        return 1
+    ok = Gtk.init_check()
+    if isinstance(ok, tuple):
+        ok = ok[0]
+    if not ok:
+        print("SMOKE-FAIL display")
+        return 1
+
+    class App(object):
+        def __init__(self):
+            self.server = None
+            self.win = Gtk.Window(title="Uhuru Share")
+            self.win.set_default_size(760, 560)
+            self.win.set_border_width(14)
+            self.win.connect("destroy", self.on_quit)
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            self.win.add(outer)
+            title = Gtk.Label()
+            title.set_markup("<span size='x-large' weight='bold'>Uhuru Share</span>")
+            title.set_xalign(0)
+            outer.pack_start(title, False, False, 0)
+            intro = Gtk.Label(label="Shiriki programu na masasisho kati ya kompyuta kwa USB au mtandao wa karibu (LAN), "
+                                    "bila kutumia data ya intaneti.")
+            intro.set_xalign(0)
+            intro.set_line_wrap(True)
+            outer.pack_start(intro, False, False, 0)
+            grid = Gtk.Grid(column_spacing=10, row_spacing=10, column_homogeneous=True)
+            outer.pack_start(grid, False, False, 0)
+            specs = [
+                ("1. Tengeneza kifurushi", "Kutoka programu ulizokwisha pakua kwenye kompyuta hii", self.do_pack),
+                ("2. Sakinisha kutoka USB/folda", "Sakinisha programu kutoka kifurushi", self.do_install),
+                ("3. Shiriki kwa LAN", "Wezesha kompyuta nyingine kupokea kifurushi", self.do_serve),
+                ("4. Pokea kutoka LAN", "Pokea kifurushi kutoka kompyuta nyingine", self.do_receive),
+            ]
+            self.buttons = []
+            for i, (head, sub, cb) in enumerate(specs):
+                btn = Gtk.Button()
+                lab = Gtk.Label()
+                lab.set_markup("<b>%s</b>\n<small>%s</small>" % (GLib.markup_escape_text(head),
+                                                                  GLib.markup_escape_text(sub)))
+                lab.set_line_wrap(True)
+                btn.add(lab)
+                btn.connect("clicked", cb)
+                grid.attach(btn, i % 2, i // 2, 1, 1)
+                self.buttons.append(btn)
+            self.serve_btn = self.buttons[2]
+            self.serve_label = self.serve_btn.get_child()
+            scroll = Gtk.ScrolledWindow()
+            scroll.set_vexpand(True)
+            scroll.set_shadow_type(Gtk.ShadowType.IN)
+            self.view = Gtk.TextView()
+            self.view.set_editable(False)
+            self.view.set_monospace(True)
+            self.view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            scroll.add(self.view)
+            outer.pack_start(scroll, True, True, 0)
+            self.status = Gtk.Label(label="Tayari.")
+            self.status.set_xalign(0)
+            outer.pack_start(self.status, False, False, 0)
+            self.log("Karibu. Chagua kitendo hapo juu.")
+            self.win.show_all()
+
+        # ---- zana za dirisha
+        def log(self, text):
+            def _add():
+                buf = self.view.get_buffer()
+                buf.insert(buf.get_end_iter(), text + "\n")
+                mark = buf.create_mark(None, buf.get_end_iter(), False)
+                self.view.scroll_to_mark(mark, 0.0, False, 0, 0)
+                return False
+            GLib.idle_add(_add)
+
+        def set_status(self, text):
+            GLib.idle_add(lambda: (self.status.set_text(text), False)[1])
+
+        def busy(self, flag):
+            def _b():
+                for b in self.buttons:
+                    if b is not self.serve_btn or self.server is None:
+                        b.set_sensitive(not flag)
+                return False
+            GLib.idle_add(_b)
+
+        def message(self, text, kind=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK):
+            dlg = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=kind, buttons=buttons, text=text)
+            res = dlg.run()
+            dlg.destroy()
+            return res
+
+        def pick_folder(self, title, start=None):
+            dlg = Gtk.FileChooserDialog(title=title, parent=self.win, action=Gtk.FileChooserAction.SELECT_FOLDER)
+            dlg.add_buttons("Ghairi", Gtk.ResponseType.CANCEL, "Chagua", Gtk.ResponseType.OK)
+            guess = start or ("/media/" + os.environ.get("USER", "") if os.path.isdir(
+                "/media/" + os.environ.get("USER", "")) else os.path.expanduser("~"))
+            dlg.set_current_folder(guess)
+            path = dlg.get_filename() if dlg.run() == Gtk.ResponseType.OK else None
+            dlg.destroy()
+            return path
+
+        def background(self, work, done=None):
+            self.busy(True)
+
+            def _t():
+                err = None
+                try:
+                    work()
+                except ShareError as exc:
+                    err = str(exc)
+                except Exception as exc:  # noqa: BLE001
+                    err = "hitilafu: %s" % exc
+                if err:
+                    self.log("IMESHINDIKANA: " + err)
+                    self.set_status("Imeshindikana.")
+                else:
+                    self.set_status("Imekamilika.")
+                self.busy(False)
+                if done and not err:
+                    GLib.idle_add(lambda: (done(), False)[1])
+            threading.Thread(target=_t, daemon=True).start()
+
+        # ---- vitendo
+        def do_pack(self, _w):
+            folder = self.pick_folder("Chagua folda au USB ya kuhifadhi kifurushi")
+            if not folder:
+                return
+            dest = os.path.join(folder, "uhuru-share")
+            self.log("Natengeneza kifurushi kwenye " + dest)
+            self.background(lambda: pack(dest, "cache", [], "", self.log))
+
+        def do_install(self, _w, folder=None):
+            folder = folder or self.pick_folder("Chagua folda au USB yenye kifurushi (uhuru-share)")
+            if not folder:
+                return
+            try:
+                manifest, raw = load_manifest(folder)
+                problems = verify_dir(folder, manifest)
+                if problems:
+                    raise ShareError("; ".join(problems[:3]))
+                plan = plan_install(folder, manifest)
+            except ShareError as exc:
+                self.message("Kifurushi hakikubaliki:\n" + str(exc), Gtk.MessageType.ERROR)
+                return
+            todo = [p for p in plan if p[3] == "install"]
+            if not todo:
+                self.message("Hakuna kipya cha kusakinisha. Kila kitu tayari kipo.")
+                return
+            warn = codename_warning(manifest)
+            if warn:
+                self.message(warn + "\nUsakinishaji umesimamishwa.", Gtk.MessageType.ERROR)
+                return
+            lines = "\n".join("  %s %s  (%s)" % (p[1], p[2], p[4]) for p in todo[:12])
+            more = "\n  ... na %d zaidi" % (len(todo) - 12) if len(todo) > 12 else ""
+            text = ("Vifurushi %d vitasakinishwa:\n%s%s\n\nAlama ya kifurushi: %s\n"
+                    "Linganisha alama hii na mtoaji. Sakinisha tu kutoka chanzo unachokiamini.\n\nUendelee?"
+                    % (len(todo), lines, more, manifest_id(raw)))
+            if self.message(text, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO) != Gtk.ResponseType.YES:
+                return
+            self.log("Nasakinisha kutoka " + folder)
+
+            def work():
+                cmd = ["pkexec", "env", "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C", os.path.abspath(sys.argv[0]),
+                       "import", "--root-install", folder]
+                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        universal_newlines=True)
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        self.log(line)
+                rc = proc.wait()
+                if rc in (126, 127):
+                    raise ShareError("umeghairi au huna ruhusa ya msimamizi")
+                if rc != 0:
+                    raise ShareError("usakinishaji umeshindikana (msimbo %d)" % rc)
+            self.background(work)
+
+        def do_serve(self, _w):
+            if self.server is not None:
+                srv, self.server = self.server, None
+                threading.Thread(target=stop_server, args=(srv,), daemon=True).start()
+                self.serve_label.set_markup("<b>3. Shiriki kwa LAN</b>\n<small>Wezesha kompyuta nyingine kupokea "
+                                            "kifurushi</small>")
+                self.log("Nimesimamisha kushiriki.")
+                return
+            folder = self.pick_folder("Chagua folda ya kifurushi (uhuru-share) cha kushiriki")
+            if not folder:
+                return
+            try:
+                self.server, _th, manifest, raw = start_server(folder, PORT)
+            except (ShareError, OSError) as exc:
+                self.message("Siwezi kuanza kushiriki:\n%s" % exc, Gtk.MessageType.ERROR)
+                return
+            urls = ["http://%s:%d" % (ip, PORT) for ip in local_ips()] or ["http://<anwani-ya-kompyuta>:%d" % PORT]
+            self.log("Ninashiriki faili %d. Alama ya kifurushi: %s" % (len(manifest["files"]), manifest_id(raw)))
+            self.log("Kompyuta nyingine ifungue 'Pokea kutoka LAN' au itumie anwani:\n  " + "\n  ".join(urls))
+            self.serve_label.set_markup("<b>3. Simamisha kushiriki</b>\n<small>Inashiriki sasa kwenye LAN</small>")
+
+        def do_receive(self, _w):
+            self.log("Natafuta kompyuta zinazoshiriki (sekunde 5)...")
+            self.busy(True)
+
+            def _scan():
+                res = discover(5)
+                GLib.idle_add(lambda: (self.ask_url(res), False)[1])
+            threading.Thread(target=_scan, daemon=True).start()
+
+        def ask_url(self, found):
+            self.busy(False)
+            dlg = Gtk.Dialog(title="Pokea kutoka LAN", transient_for=self.win, modal=True)
+            dlg.add_buttons("Ghairi", Gtk.ResponseType.CANCEL, "Pokea", Gtk.ResponseType.OK)
+            area = dlg.get_content_area()
+            area.set_spacing(8)
+            area.set_border_width(12)
+            if found:
+                area.add(Gtk.Label(label="Zilizopatikana: " + ", ".join(
+                    "%s (%s)" % (f["host"], f["url"]) for f in found), xalign=0))
+            else:
+                area.add(Gtk.Label(label="Hakuna kilichopatikana kiotomatiki. Andika anwani ya mtoaji.", xalign=0))
+            entry = Gtk.Entry()
+            entry.set_text(found[0]["url"] if found else "http://")
+            entry.set_activates_default(True)
+            area.add(entry)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            dlg.show_all()
+            ok = dlg.run() == Gtk.ResponseType.OK
+            url = entry.get_text().strip()
+            dlg.destroy()
+            if not ok or not url:
+                return
+            dest = os.path.join(os.path.expanduser("~"), "Uhuru-Share-Imepokelewa")
+            self.log("Napokea kutoka %s kwenda %s" % (url, dest))
+            self.background(lambda: fetch(url, dest, self.log), done=lambda: self.after_fetch(dest))
+
+        def after_fetch(self, dest):
+            if self.message("Kifurushi kimepokelewa na kukaguliwa.\nUnataka kukisakinisha sasa?",
+                            Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO) == Gtk.ResponseType.YES:
+                self.do_install(None, dest)
+
+        def on_quit(self, *_a):
+            if self.server is not None:
+                try:
+                    stop_server(self.server)
+                except Exception:  # noqa: BLE001
+                    pass
+            Gtk.main_quit()
+
+    app = App()
+    if smoke:
+        app.win.realize()
+        print("SMOKE-OK")
+        return 0
+    Gtk.main()
+    return 0
+
+
+# ------------------------------------------------------------------ CLI
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="uhuru-share", description="Uhuru Share " + VERSION)
+    p.add_argument("--gui", action="store_true", help="fungua dirisha")
+    p.add_argument("--selftest", action="store_true")
+    p.add_argument("--smoke", action="store_true")
+    sub = p.add_subparsers(dest="cmd")
+    a = sub.add_parser("pack")
+    a.add_argument("dest")
+    a.add_argument("items", nargs="*")
+    a.add_argument("--cache", action="store_true", help="tumia programu zilizopakuliwa kwenye kompyuta hii")
+    a.add_argument("--files", action="store_true", help="vipengele ni faili za .deb")
+    a.add_argument("--label", default="")
+    a = sub.add_parser("verify")
+    a.add_argument("dir")
+    a = sub.add_parser("import")
+    a.add_argument("dir")
+    a.add_argument("--dry-run", action="store_true")
+    a.add_argument("--force", action="store_true")
+    a.add_argument("--root-install", action="store_true", help=argparse.SUPPRESS)
+    a = sub.add_parser("serve")
+    a.add_argument("dir")
+    a.add_argument("--port", type=int, default=PORT)
+    a.add_argument("--bind", default="0.0.0.0")
+    a = sub.add_parser("discover")
+    a.add_argument("--seconds", type=int, default=5)
+    a = sub.add_parser("fetch")
+    a.add_argument("url")
+    a.add_argument("dest")
+    return p
+
+
+def main(argv):
+    args = build_parser().parse_args(argv)
+    if args.selftest:
+        return selftest()
+    if args.smoke:
+        return gui_main(smoke=True)
+    if args.gui:
+        return gui_main()
+    try:
+        if args.cmd == "pack":
+            if args.cache:
+                pack(args.dest, "cache", [], args.label)
+            elif args.files:
+                pack(args.dest, "files", args.items, args.label)
+            elif args.items:
+                pack(args.dest, "packages", args.items, args.label)
+            else:
+                raise ShareError("taja --cache, --files au majina ya vifurushi")
+        elif args.cmd == "verify":
+            manifest, raw = load_manifest(args.dir)
+            problems = verify_dir(args.dir, manifest)
+            for pr in problems:
+                say("TATIZO: " + pr)
+            say("alama ya kifurushi: %s, faili %d" % (manifest_id(raw), len(manifest["files"])))
+            return 1 if problems else 0
+        elif args.cmd == "import":
+            if args.root_install:
+                return root_install(args.dir, args.force)
+            manifest, raw = load_manifest(args.dir)
+            problems = verify_dir(args.dir, manifest)
+            if problems:
+                raise ShareError("ukaguzi umeshindwa: " + "; ".join(problems[:3]))
+            warn = codename_warning(manifest)
+            if warn:
+                say("ONYO: " + warn)
+            plan = plan_install(args.dir, manifest)
+            say("alama ya kifurushi: " + manifest_id(raw))
+            for f, pkg, ver, action, why in plan:
+                say("  %-8s %s %s  (%s)" % (action, pkg, ver, why))
+            if args.dry_run or not any(p[3] == "install" for p in plan):
+                return 0
+            if warn and not args.force:
+                raise ShareError("tumia --force kama una uhakika")
+            if os.geteuid() == 0:
+                return root_install(args.dir, args.force)
+            cmd = ["pkexec", "env", "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C", os.path.abspath(sys.argv[0]),
+                   "import", "--root-install", args.dir] + (["--force"] if args.force else [])
+            return subprocess.call(cmd)
+        elif args.cmd == "serve":
+            srv, _th, manifest, raw = start_server(args.dir, args.port, args.bind, verbose=True)
+            urls = ["http://%s:%d" % (ip, args.port) for ip in local_ips()]
+            say("Nashiriki faili %d. Alama ya kifurushi: %s" % (len(manifest["files"]), manifest_id(raw)))
+            say("Anwani: " + (", ".join(urls) or "http://<anwani-ya-kompyuta>:%d" % args.port))
+            say("Bonyeza Ctrl+C kusimamisha.")
+            try:
+                while True:
+                    time.sleep(3600)
+            except KeyboardInterrupt:
+                stop_server(srv)
+        elif args.cmd == "discover":
+            for f in discover(args.seconds):
+                say("%s  %s  (%s)  alama %s" % (f["url"], f["host"], f["label"], f["id"]))
+        elif args.cmd == "fetch":
+            fetch(args.url, args.dest)
+        else:
+            build_parser().print_help()
+            return 2
+    except ShareError as exc:
+        say("IMESHINDIKANA: %s" % exc)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

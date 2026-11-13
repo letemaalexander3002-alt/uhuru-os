@@ -1,0 +1,5 @@
+// Uhuru OS awamu ya 5 (offline-first): apt ishindwe haraka bila mtandao na isipakue data zisizo za lazima.
+Acquire::http::Timeout "15";
+Acquire::https::Timeout "15";
+Acquire::Retries "1";
+Acquire::Languages "none";

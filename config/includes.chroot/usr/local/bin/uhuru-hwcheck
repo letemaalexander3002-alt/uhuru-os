@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Uhuru HW Check - ripoti ya kifaa (RAM, CPU, diski, WiFi, graphics, printa) kwa majaribio ya vifaa halisi.
+
+  uhuru-hwcheck                 onyesha ripoti
+  uhuru-hwcheck --save DIR      hifadhi ripoti (.txt na .json) kwenye DIR (mfano USB)
+  uhuru-hwcheck --interactive   onyesha, hifadhi kwenye folda ya nyumbani, subiri Enter (kwa menyu)
+  uhuru-hwcheck --check         mstari mmoja kwa CI
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+
+def read(path, default=""):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return default
+
+
+def cmd(argv, timeout=15):
+    try:
+        return subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True,
+                              timeout=timeout).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def meminfo():
+    d = {}
+    for line in read("/proc/meminfo").splitlines():
+        m = re.match(r"^(\w+):\s+(\d+)", line)
+        if m:
+            d[m.group(1)] = int(m.group(2)) // 1024
+    return d
+
+
+def cpu():
+    model, n = "", 0
+    for line in read("/proc/cpuinfo").splitlines():
+        if line.startswith("model name") and not model:
+            model = line.split(":", 1)[1].strip()
+        if line.startswith("processor"):
+            n += 1
+    return model or "haijulikani", n
+
+
+def disks():
+    out = []
+    for dev in sorted(glob.glob("/sys/block/*")):
+        name = os.path.basename(dev)
+        if re.match(r"^(loop|ram|zram|sr|fd|dm-|md)", name):
+            continue
+        try:
+            size_gb = int(read(dev + "/size", "0")) * 512 / 1e9
+        except ValueError:
+            size_gb = 0
+        rot = read(dev + "/queue/rotational")
+        kind = "HDD" if rot == "1" else ("SSD/Flash" if rot == "0" else "?")
+        if name.startswith("mmcblk"):
+            kind = "eMMC/SD"
+        if name.startswith("nvme"):
+            kind = "NVMe"
+        out.append({"name": name, "gb": round(size_gb, 1), "type": kind,
+                    "model": read(dev + "/device/model") or read(dev + "/device/name")})
+    return out
+
+
+def nets():
+    out = []
+    for dev in sorted(glob.glob("/sys/class/net/*")):
+        name = os.path.basename(dev)
+        if name == "lo":
+            continue
+        drv = ""
+        try:
+            drv = os.path.basename(os.readlink(dev + "/device/driver"))
+        except OSError:
+            pass
+        kind = "WiFi" if os.path.isdir(dev + "/wireless") or os.path.isdir(dev + "/phy80211") else "Waya/nyingine"
+        out.append({"name": name, "kind": kind, "driver": drv, "state": read(dev + "/operstate")})
+    return out
+
+
+def pci_lines():
+    if not shutil.which("lspci"):
+        return []
+    keep = re.compile(r"(VGA|3D controller|Display|Network|Ethernet|Audio)", re.I)
+    return [l.strip() for l in cmd(["lspci", "-nn"]).splitlines() if keep.search(l)]
+
+
+def usb_count():
+    if not shutil.which("lsusb"):
+        return None
+    return len([l for l in cmd(["lsusb"]).splitlines() if l.strip()])
+
+
+def printers():
+    if not shutil.which("lpstat"):
+        return []
+    return [l.strip() for l in cmd(["lpstat", "-p"]).splitlines() if l.startswith("printer")]
+
+
+def battery():
+    for b in glob.glob("/sys/class/power_supply/BAT*"):
+        return {"capacity": read(b + "/capacity"), "status": read(b + "/status")}
+    return None
+
+
+def dmi():
+    base = "/sys/class/dmi/id/"
+    return {k: read(base + k) for k in ("sys_vendor", "product_name", "bios_version", "bios_date")}
+
+
+def gather():
+    mem = meminfo()
+    model, ncpu = cpu()
+    return {
+        "date": time.strftime("%Y-%m-%d %H:%M:%S"), "host": socket.gethostname(),
+        "kernel": os.uname().release, "dmi": dmi(),
+        "ram_mb": mem.get("MemTotal", 0), "ram_avail_mb": mem.get("MemAvailable", 0),
+        "swap_mb": mem.get("SwapTotal", 0), "cpu": model, "cpus": ncpu,
+        "disks": disks(), "net": nets(), "pci": pci_lines(), "usb_devices": usb_count(),
+        "printers": printers(), "battery": battery(), "uefi": os.path.isdir("/sys/firmware/efi"),
+    }
+
+
+def verdicts(d):
+    notes = []
+    if d["ram_mb"] and d["ram_mb"] < 1800:
+        notes.append("RAM iko chini ya 2GB: mfumo utafanya kazi kwa shida.")
+    elif d["ram_mb"] < 3800:
+        notes.append("RAM ni 2-4GB: inakidhi lengo la chini la Uhuru OS.")
+    else:
+        notes.append("RAM ni nzuri (4GB au zaidi).")
+    if any(x["type"] == "HDD" for x in d["disks"]):
+        notes.append("Diski ni HDD ya kawaida: boot itakuwa polepole kuliko SSD.")
+    if not any(n["kind"] == "WiFi" for n in d["net"]):
+        notes.append("Hakuna kadi ya WiFi iliyoonekana (huenda dereva haipo au kifaa hakina).")
+    elif not any(n["driver"] for n in d["net"] if n["kind"] == "WiFi"):
+        notes.append("WiFi ipo lakini haina dereva: huenda inahitaji firmware.")
+    if not d["disks"]:
+        notes.append("Hakuna diski iliyoonekana.")
+    return notes
+
+
+def render(d):
+    L = ["=== UHURU HW CHECK ===", "Tarehe: %s    Jina la kompyuta: %s" % (d["date"], d["host"]),
+         "Kifaa: %s %s (BIOS %s, %s)" % (d["dmi"]["sys_vendor"], d["dmi"]["product_name"], d["dmi"]["bios_version"],
+                                         d["dmi"]["bios_date"]),
+         "Boot: %s    Kernel: %s" % ("UEFI" if d["uefi"] else "BIOS/Legacy", d["kernel"]),
+         "CPU: %s (core %d)" % (d["cpu"], d["cpus"]),
+         "RAM: %d MB (ipo wazi %d MB), swap %d MB" % (d["ram_mb"], d["ram_avail_mb"], d["swap_mb"]), "Diski:"]
+    L += ["  %s  %s GB  %s  %s" % (x["name"], x["gb"], x["type"], x["model"]) for x in d["disks"]] or ["  (hakuna)"]
+    L.append("Mtandao:")
+    L += ["  %s  %s  dereva=%s  hali=%s" % (n["name"], n["kind"], n["driver"] or "-", n["state"]) for n in d["net"]] or [
+        "  (hakuna)"]
+    L.append("Graphics/Sauti/Mtandao (PCI):")
+    L += ["  " + p for p in d["pci"]] or ["  (lspci haipo au hakuna)"]
+    L.append("Vifaa vya USB: %s" % ("?" if d["usb_devices"] is None else d["usb_devices"]))
+    L.append("Printa: %s" % ("; ".join(d["printers"]) if d["printers"] else "hakuna zilizosanidiwa"))
+    if d["battery"]:
+        L.append("Betri: %s%% (%s)" % (d["battery"]["capacity"], d["battery"]["status"]))
+    L.append("Tathmini:")
+    L += ["  - " + n for n in verdicts(d)]
+    L.append("Jaza pia mwenyewe: WiFi inaunganisha? Sauti inafanya kazi? Printa inachapa? Touchpad/kibodi sawa?")
+    return "\n".join(L)
+
+
+def save(d, directory):
+    os.makedirs(directory, exist_ok=True)
+    base = os.path.join(directory, "uhuru-hw-%s-%s" % (re.sub(r"[^A-Za-z0-9_.-]", "_", d["host"]),
+                                                       time.strftime("%Y%m%d-%H%M%S")))
+    with open(base + ".txt", "w", encoding="utf-8") as fh:
+        fh.write(render(d) + "\n")
+    with open(base + ".json", "w", encoding="utf-8") as fh:
+        json.dump(d, fh, indent=1, ensure_ascii=False)
+    return base + ".txt"
+
+
+def main(argv):
+    d = gather()
+    if "--check" in argv:
+        if d["ram_mb"] <= 0 or d["cpus"] <= 0:
+            print("HW-FAIL ram=%d cpus=%d" % (d["ram_mb"], d["cpus"]))
+            return 1
+        print("HW-OK ram=%d cpus=%d disks=%d net=%d" % (d["ram_mb"], d["cpus"], len(d["disks"]), len(d["net"])))
+        return 0
+    print(render(d))
+    if "--save" in argv:
+        i = argv.index("--save")
+        if i + 1 >= len(argv):
+            print("IMESHINDIKANA: --save inahitaji folda")
+            return 2
+        print("\nImehifadhiwa: " + save(d, argv[i + 1]))
+    if "--interactive" in argv:
+        print("\nImehifadhiwa: " + save(d, os.path.expanduser("~")))
+        try:
+            input("\nBonyeza Enter kufunga...")
+        except EOFError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

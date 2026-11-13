@@ -62,6 +62,20 @@ else
     if p4 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 4: dirisha la LGT Store linajengwa ndani ya session"; else fail "awamu ya 4: LGT Store haifunguki ndani ya session ($(printf '%s\n' "$P4" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     if p4 'whisker=[1-9]'; then echo "CHECK PASS: e2e: awamu ya 4: Start menu (Whisker) inakimbia kwenye taskbar"; else fail "awamu ya 4: Start menu (Whisker) haikimbii; angalia picha 02-desktop na 15-baada-ya-login"; fi
 fi
+# ---- Awamu ya 5: offline-first, Uhuru Share, zram, ukaguzi wa vifaa (v15.0) ----
+P5=$(slogc | grep '^UHURU-P5 ' | tail -n 40)
+P5LAST=$(printf '%s\n' "$P5" | tail -n 1)
+p5() { printf '%s\n' "$P5" | grep -Eq "$1"; }
+if [ -z "$P5" ]; then
+    fail "awamu ya 5: hakuna ripoti ya UHURU-P5 (uhuru-share au telemetry haikufanya kazi)"
+else
+    if p5 'files=ok'; then echo "CHECK PASS: e2e: awamu ya 5: Uhuru Share, uhuru-hwcheck na huduma ya zram zipo kwenye ISO"; else fail "awamu ya 5: faili hazijakamilika ($P5LAST)"; fi
+    if p5 'conf=ok'; then echo "CHECK PASS: e2e: awamu ya 5: mipangilio ya offline-first (apt timeout, boot haisubiri mtandao)"; else fail "awamu ya 5: mipangilio ya offline haijakamilika ($P5LAST)"; fi
+    if p5 'share=SELFTEST-OK'; then echo "CHECK PASS: e2e: awamu ya 5: Uhuru Share (kifurushi, ukaguzi, LAN, ulinzi wa faili) inapita jaribio la ndani"; else fail "awamu ya 5: uhuru-share --selftest imeshindwa ($(printf '%s\n' "$P5" | grep -o 'share=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p5 'hw=HW-OK'; then echo "CHECK PASS: e2e: awamu ya 5: uhuru-hwcheck inaripoti vifaa"; else fail "awamu ya 5: uhuru-hwcheck imeshindwa ($(printf '%s\n' "$P5" | grep -o 'hw=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p5 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 5: dirisha la Uhuru Share linajengwa ndani ya session"; else fail "awamu ya 5: Uhuru Share haifunguki ndani ya session ($(printf '%s\n' "$P5" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    echo "CHECK INFO: e2e: awamu ya 5: RAM ya jaribio na zram ($(printf '%s\n' "$P5LAST" | grep -o 'mem=[0-9]* avail=[0-9]* zram=[a-z]*'))"
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0

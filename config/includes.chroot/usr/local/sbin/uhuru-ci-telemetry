@@ -94,7 +94,28 @@ p4check() {
     printf 'UHURU-P4 cfg=%s launcher=%s icons=%s store=%s gui=%s whisker=%s panel=%s' "$cfg" "$lch" "$ic" "${st:-empty}" "$gui" \
         "$(cnt -fc '[w]rapper-2.0.*whiskermenu')" "$(cnt -xc xfce4-panel)"
 }
-n=0; RPID=""; P4PID=""
+# v15.0: ukaguzi wa awamu ya 5 (offline-first, Uhuru Share, zram, ukaguzi wa vifaa).
+p5check() {
+    local files=no conf=no shr hw gui=none xu mt ma zr=inactive
+    if [ -x /usr/local/bin/uhuru-share ] && [ -x /usr/local/bin/uhuru-hwcheck ] && [ -x /usr/local/sbin/uhuru-zram-setup ] \
+        && [ -f /usr/share/applications/uhuru-share.desktop ] && [ -f /etc/systemd/system/uhuru-zram.service ]; then files=ok; fi
+    if grep -q 'Timeout' /etc/apt/apt.conf.d/90uhuru-offline 2>/dev/null \
+        && [ "$(readlink /etc/systemd/system/NetworkManager-wait-online.service 2>/dev/null)" = /dev/null ]; then conf=ok; fi
+    shr=$(timeout -k 1 60 /usr/local/bin/uhuru-share --selftest 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-90)
+    hw=$(timeout -k 1 25 /usr/local/bin/uhuru-hwcheck --check 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-60)
+    mt=$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)
+    ma=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null)
+    grep -q '^/dev/zram0' /proc/swaps 2>/dev/null && zr=active
+    if [ -e /var/lib/uhuru-setup.done ]; then
+        xu=$(timeout -k 1 3 ps -C xfce4-session -o user= 2>/dev/null | head -n 1 | tr -d ' ')
+        if [ -n "$xu" ]; then
+            gui=$(timeout -k 2 40 runuser -u "$xu" -- env DISPLAY=:0 XAUTHORITY="/home/$xu/.Xauthority" /usr/local/bin/uhuru-share --smoke 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-60)
+            [ -n "$gui" ] || gui=empty
+        fi
+    fi
+    printf 'UHURU-P5 files=%s conf=%s share=%s hw=%s gui=%s mem=%s avail=%s zram=%s' "$files" "$conf" "${shr:-empty}" "${hw:-empty}" "$gui" "${mt:-0}" "${ma:-0}" "$zr"
+}
+n=0; RPID=""; P4PID=""; P5PID=""
 while :; do
     n=$((n+1))
     sess=$(sessions)
@@ -105,6 +126,10 @@ while :; do
         "$n" "$sess" "$xu" "$(cnt -xc zenity)" "$stp" "$(cnt -fc '[l]ightdm-gtk-greeter')" "$(cnt -xc xfce4-session)" \
         "$(cnt -xc light-locker)" "$([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)" "$al")"
     [ $((n % 2)) -eq 1 ] && emit "$(accounts)"
+    if [ $((n % 4)) -eq 1 ] && { [ -z "$P5PID" ] || ! kill -0 "$P5PID" 2>/dev/null; }; then
+        { emit "$(p5check)"; } &
+        P5PID=$!
+    fi
     if [ $((n % 4)) -eq 3 ] && { [ -z "$P4PID" ] || ! kill -0 "$P4PID" 2>/dev/null; }; then
         { emit "$(p4check)"; } &
         P4PID=$!

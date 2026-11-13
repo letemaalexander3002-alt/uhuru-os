@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Uhuru HW Check
+Name[sw]=Ukaguzi wa Kifaa
+Comment=Report RAM, disk, WiFi and graphics of this computer
+Comment[sw]=Ripoti ya RAM, diski, WiFi na graphics za kompyuta hii
+Exec=uhuru-hwcheck --interactive
+Icon=computer
+Terminal=true
+Categories=System;Utility;
+Keywords=hardware;ram;wifi;kifaa;ukaguzi;

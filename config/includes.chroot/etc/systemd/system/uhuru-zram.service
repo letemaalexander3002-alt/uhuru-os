@@ -1,0 +1,15 @@
+[Unit]
+Description=Uhuru OS: zram swap kwa RAM ndogo
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=basic.target swap.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/uhuru-zram-setup start
+ExecStop=/usr/local/sbin/uhuru-zram-setup stop
+
+[Install]
+WantedBy=multi-user.target
