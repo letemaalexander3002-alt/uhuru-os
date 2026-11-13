@@ -167,7 +167,7 @@ rm -f "$MON" "$OUT/e2e.log"
 ACCEL=tcg; [ -w /dev/kvm ] && ACCEL=kvm
 note "QEMU accel: $ACCEL"
 # -smbios serial=UHURU_CI huwasha telemetry ndani ya mfumo (haiathiri kompyuta halisi)
-qemu-system-x86_64 -accel "$ACCEL" -m 3072 -smp 2 -cpu max -cdrom "$ISO" -boot d \
+qemu-system-x86_64 -accel "$ACCEL" -m 2048 -smp 2 -cpu max -cdrom "$ISO" -boot d \
     -vga std -display none -monitor unix:"$MON",server,nowait -smbios type=1,serial=UHURU_CI \
     -serial file:"$OUT/serial.log" -netdev user,id=n0 -device e1000,netdev=n0 &
 QPID=$!

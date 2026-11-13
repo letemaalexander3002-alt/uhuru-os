@@ -1,0 +1,50 @@
+#!/bin/sh
+# Uhuru OS awamu ya 5.1: locale (en_US.UTF-8 na sw_TZ.UTF-8), folda za mtumiaji (XDG) na arifa (xfce4-notifyd).
+# Inaendeshwa baada ya 9991. Haigusi taskbar, Start menu, LGT Store wala Uhuru Share.
+# Kila kosa la hapa linaishia ONYO (build haivunjiki); telemetry ya CI inathibitisha matokeo ndani ya ISO.
+
+# ---- 1. locale: tengeneza en_US.UTF-8 na sw_TZ.UTF-8 (hii inaondoa "Locale not supported by C library")
+LG=/etc/locale.gen
+[ -f "$LG" ] || : > "$LG"
+for l in en_US.UTF-8 sw_TZ.UTF-8; do
+    if [ -f /usr/share/i18n/SUPPORTED ] && ! grep -q "^$l UTF-8" /usr/share/i18n/SUPPORTED; then
+        echo "uhuru-phase51: ONYO: $l haipo kwenye /usr/share/i18n/SUPPORTED, naruka"
+        continue
+    fi
+    if grep -q "^# *$l UTF-8" "$LG"; then
+        sed -i "s/^# *\($l UTF-8\)/\1/" "$LG"
+    elif ! grep -q "^$l UTF-8" "$LG"; then
+        echo "$l UTF-8" >> "$LG"
+    fi
+done
+if command -v locale-gen >/dev/null 2>&1; then
+    locale-gen || echo "uhuru-phase51: ONYO: locale-gen imeshindwa"
+else
+    echo "uhuru-phase51: ONYO: locale-gen haipo (kifurushi cha locales hakijasakinishwa?)"
+fi
+locale -a 2>/dev/null | grep -qi '^en_US\.utf-\?8$' && echo "uhuru-phase51: en_US.UTF-8 tayari" || echo "uhuru-phase51: ONYO: en_US.UTF-8 haikutengenezwa"
+locale -a 2>/dev/null | grep -qi '^sw_TZ\.utf-\?8$' && echo "uhuru-phase51: sw_TZ.UTF-8 tayari" || echo "uhuru-phase51: ONYO: sw_TZ.UTF-8 haikutengenezwa"
+
+# ---- 2. folda za mtumiaji (XDG): zinakuja kupitia /etc/skel kwa kila akaunti mpya (wizard na live)
+P=/usr/share/uhuru-phase51/skel/.config
+SK=/etc/skel
+if [ -d "$P" ]; then
+    mkdir -p "$SK/.config"
+    cp -f "$P/user-dirs.dirs" "$SK/.config/user-dirs.dirs"
+    cp -f "$P/user-dirs.conf" "$SK/.config/user-dirs.conf"
+    for d in Desktop Downloads Documents Music Pictures Videos Templates Public; do mkdir -p "$SK/$d"; done
+    # xdg-user-dirs isibadilishe majina ya folda kwa lugha (Kiswahili) bila ruhusa
+    mkdir -p /etc/xdg
+    printf 'enabled=False\nfilename_encoding=UTF-8\n' > /etc/xdg/user-dirs.conf
+else
+    echo "uhuru-phase51: ONYO: $P haipo"
+fi
+
+# ---- 3. arifa: xfce4-notifyd (huduma ya D-Bus inawaka yenyewe inapohitajika)
+if [ -f /usr/share/dbus-1/services/org.xfce.xfce4-notifyd.Notifications.service ]; then
+    echo "uhuru-phase51: xfce4-notifyd ipo"
+else
+    echo "uhuru-phase51: ONYO: huduma ya D-Bus ya xfce4-notifyd haipo"
+fi
+echo "uhuru-phase51: locale, folda za mtumiaji na arifa zimewekwa"
+exit 0

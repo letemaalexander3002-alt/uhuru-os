@@ -115,7 +115,37 @@ p5check() {
     fi
     printf 'UHURU-P5 files=%s conf=%s share=%s hw=%s gui=%s mem=%s avail=%s zram=%s' "$files" "$conf" "${shr:-empty}" "${hw:-empty}" "$gui" "${mt:-0}" "${ma:-0}" "$zr"
 }
-n=0; RPID=""; P4PID=""; P5PID=""
+# v15.1: ukaguzi wa awamu ya 5.1 (locale, folda za mtumiaji, arifa).
+p51check() {
+    local en=no sw=no nd=no loc=na lang="" locerr=na xdg=na xdgwarn=na ntf=na xu pid envl bus gi E
+    locale -a 2>/dev/null | grep -qi '^en_US\.utf-\?8$' && en=ok
+    locale -a 2>/dev/null | grep -qi '^sw_TZ\.utf-\?8$' && sw=ok
+    dpkg -s xfce4-notifyd >/dev/null 2>&1 && nd=ok
+    if [ -e /var/lib/uhuru-setup.done ]; then
+        xu=$(timeout -k 1 3 ps -C xfce4-session -o user= 2>/dev/null | head -n 1 | tr -d ' ')
+        pid=$(pgrep -u "$xu" -x xfce4-session 2>/dev/null | head -n 1)
+        if [ -n "$xu" ] && [ -n "$pid" ]; then
+            envl=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null)
+            lang=$(printf '%s\n' "$envl" | sed -n 's/^LANG=//p' | head -n 1 | tr -cd 'A-Za-z0-9_.@-' | cut -c1-24)
+            bus=$(printf '%s\n' "$envl" | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -n 1)
+            if [ -z "$lang" ]; then loc=nolang
+            elif LANG="$lang" LC_ALL="$lang" timeout -k 1 10 python3 -c 'import locale; locale.setlocale(locale.LC_ALL, "")' 2>/dev/null; then loc=ok
+            else loc=bad; fi
+            E="/home/$xu/.xsession-errors"
+            locerr=$(grep -c 'Locale not supported' "$E" 2>/dev/null); [ -n "$locerr" ] || locerr=0
+            xdgwarn=$(grep -c 'Failed to get Download dir' "$E" 2>/dev/null); [ -n "$xdgwarn" ] || xdgwarn=0
+            if [ -f "/home/$xu/.config/user-dirs.dirs" ] && [ -d "/home/$xu/Downloads" ] && [ -d "/home/$xu/Documents" ]; then xdg=ok; else xdg=no; fi
+            if [ -n "$bus" ]; then
+                gi=$(timeout -k 2 20 runuser -u "$xu" -- env DBUS_SESSION_BUS_ADDRESS="$bus" gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.GetServerInformation 2>&1 | tail -n 1)
+                case "$gi" in *notifyd*) ntf=ok ;; *) ntf=fail ;; esac
+            else
+                ntf=nobus
+            fi
+        fi
+    fi
+    printf 'UHURU-P51 en=%s sw=%s notifyd=%s loc=%s lang=%s locerr=%s xdg=%s xdgwarn=%s notify=%s' "$en" "$sw" "$nd" "$loc" "${lang:-none}" "$locerr" "$xdg" "$xdgwarn" "$ntf"
+}
+n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""
 while :; do
     n=$((n+1))
     sess=$(sessions)
@@ -126,6 +156,10 @@ while :; do
         "$n" "$sess" "$xu" "$(cnt -xc zenity)" "$stp" "$(cnt -fc '[l]ightdm-gtk-greeter')" "$(cnt -xc xfce4-session)" \
         "$(cnt -xc light-locker)" "$([ -e /var/lib/uhuru-setup.done ] && echo yes || echo no)" "$al")"
     [ $((n % 2)) -eq 1 ] && emit "$(accounts)"
+    if [ $((n % 4)) -eq 2 ] && { [ -z "$P51PID" ] || ! kill -0 "$P51PID" 2>/dev/null; }; then
+        { emit "$(p51check)"; } &
+        P51PID=$!
+    fi
     if [ $((n % 4)) -eq 1 ] && { [ -z "$P5PID" ] || ! kill -0 "$P5PID" 2>/dev/null; }; then
         { emit "$(p5check)"; } &
         P5PID=$!

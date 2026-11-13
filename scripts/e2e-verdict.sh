@@ -76,6 +76,32 @@ else
     if p5 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 5: dirisha la Uhuru Share linajengwa ndani ya session"; else fail "awamu ya 5: Uhuru Share haifunguki ndani ya session ($(printf '%s\n' "$P5" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     echo "CHECK INFO: e2e: awamu ya 5: RAM ya jaribio na zram ($(printf '%s\n' "$P5LAST" | grep -o 'mem=[0-9]* avail=[0-9]* zram=[a-z]*'))"
 fi
+# ---- Awamu ya 5.1: locale, folda za mtumiaji, arifa (v15.1) ----
+P51=$(slogc | grep '^UHURU-P51 ' | tail -n 40)
+P51N=$(printf '%s\n' "$P51" | grep -E 'locerr=[0-9]+' | tail -n 1)
+p51() { printf '%s\n' "$P51" | grep -Eq "$1"; }
+p51n() { printf '%s\n' "$P51N" | grep -Eq "$1"; }
+if [ -z "$P51" ]; then
+    fail "awamu ya 5.1: hakuna ripoti ya UHURU-P51 (telemetry haikufanya kazi)"
+else
+    if p51 'en=ok sw=ok'; then echo "CHECK PASS: e2e: awamu ya 5.1: locale en_US.UTF-8 na sw_TZ.UTF-8 zimetengenezwa"; else fail "awamu ya 5.1: locale hazijatengenezwa ($(printf '%s\n' "$P51" | tail -n 1))"; fi
+    if p51 'loc=ok' && p51n 'locerr=0 '; then echo "CHECK PASS: e2e: awamu ya 5.1: locale ya session inatumika, hakuna onyo la 'Locale not supported'"; else fail "awamu ya 5.1: locale ya session ina tatizo ($(printf '%s\n' "$P51N" | cut -c1-120))"; fi
+    if p51 'xdg=ok' && p51n 'xdgwarn=0 '; then echo "CHECK PASS: e2e: awamu ya 5.1: folda za mtumiaji (XDG) zipo, hakuna onyo la Download dir"; else fail "awamu ya 5.1: folda za mtumiaji zina tatizo ($(printf '%s\n' "$P51N" | cut -c1-120))"; fi
+    if p51 'notifyd=ok' && p51 'notify=ok'; then echo "CHECK PASS: e2e: awamu ya 5.1: huduma ya arifa (xfce4-notifyd) inajibu kwenye session"; else fail "awamu ya 5.1: arifa hazifanyi kazi ($(printf '%s\n' "$P51" | grep -o 'notify=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    echo "CHECK INFO: e2e: awamu ya 5.1: lugha ya session ($(printf '%s\n' "$P51N" | grep -o 'lang=[^ ]*'))"
+fi
+# ---- Jaribio la RAM 2GB (lengo la chini la Uhuru OS) ----
+RAMT=$(printf '%s\n' "$P5" | grep -o ' mem=[0-9]*' | tail -n 1 | tr -dc '0-9')
+RAMA=$(printf '%s\n' "$P5" | grep -o ' avail=[0-9]*' | tail -n 1 | tr -dc '0-9')
+if [ -z "$RAMT" ] || [ "$RAMT" -le 0 ]; then
+    fail "RAM 2GB: hakuna ripoti ya RAM kutoka UHURU-P5"
+elif [ "$RAMT" -gt 2100 ]; then
+    echo "CHECK INFO: e2e: RAM ya jaribio ni ${RAMT}MB (si profile ya 2GB)"
+elif [ "${RAMA:-0}" -lt 300 ]; then
+    fail "RAM 2GB: RAM wazi ni ${RAMA:-0}MB tu kati ya ${RAMT}MB (inatakiwa angalau 300MB wakati desktop, Store na Share vimefunguliwa)"
+else
+    echo "CHECK PASS: e2e: RAM 2GB: desktop, LGT Store na Uhuru Share vinafanya kazi kwenye ${RAMT}MB (wazi ${RAMA}MB)"
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0
