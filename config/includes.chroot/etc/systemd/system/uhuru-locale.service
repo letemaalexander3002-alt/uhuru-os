@@ -1,0 +1,13 @@
+[Unit]
+Description=Uhuru OS: hakikisha locale ya session ipo (Kiswahili/Kiingereza)
+After=live-config.service
+Before=display-manager.service lightdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/uhuru-locale-setup
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

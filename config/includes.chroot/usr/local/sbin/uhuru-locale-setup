@@ -1,0 +1,35 @@
+#!/bin/sh
+# Uhuru OS awamu ya 6.1: hakikisha locale zinazohitajika na session zipo (en_US, sw_TZ, na ile ambayo boot inaomba).
+# Inaendeshwa wakati wa build na kila boot (kabla ya login screen). Haivunji boot: kila kosa linaishia onyo, exit 0.
+# Ikiwa data ya locale haipo (mfano sw_TZ haipo kwenye glibc), inatumia lugha ile ile kutoka nchi jirani (sw_KE) kuunda jina lililoombwa.
+SRC=${UHURU_LOCALE_SRC:-/usr/share/i18n/locales}
+DEFAULTS=${UHURU_LOCALE_DEFAULT:-/etc/default/locale}
+CMDLINE=${UHURU_LOCALE_CMDLINE:-/proc/cmdline}
+P="uhuru-locale:"
+
+have() { locale -a 2>/dev/null | grep -qix "${1%%.*}.utf8"; }
+
+gen() {
+    loc=$1; base=${loc%%.*}; lang=${base%%_*}; src=""
+    if [ -f "$SRC/$base" ]; then
+        src=$base
+    else
+        src=$(ls "$SRC" 2>/dev/null | grep "^${lang}_" | head -n 1)
+    fi
+    if [ -z "$src" ]; then echo "$P ONYO: hakuna data ya locale kwa '$loc'"; return 1; fi
+    localedef -c -i "$src" -f UTF-8 "$base.UTF-8" >/dev/null 2>&1
+    if have "$loc"; then echo "$P $loc imetengenezwa (kutoka $src)"; else echo "$P ONYO: $loc haikutengenezwa"; return 1; fi
+}
+
+want=""
+[ -r "$DEFAULTS" ] && want=$(sed -n 's/^LANG=//p' "$DEFAULTS" | tr -d "\"'" | head -n 1)
+cmd=""
+for tok in $(cat "$CMDLINE" 2>/dev/null); do
+    case "$tok" in locales=*) cmd=${tok#locales=}; cmd=${cmd%%,*} ;; esac
+done
+
+for loc in en_US.UTF-8 sw_TZ.UTF-8 "$want" "$cmd"; do
+    case "$loc" in ""|C|POSIX|C.*) continue ;; *.*) ;; *) loc="$loc.UTF-8" ;; esac
+    if have "$loc"; then :; else gen "$loc" || true; fi
+done
+exit 0

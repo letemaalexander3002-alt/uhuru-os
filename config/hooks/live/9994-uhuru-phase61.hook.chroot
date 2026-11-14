@@ -1,0 +1,9 @@
+#!/bin/sh
+# Uhuru OS awamu ya 6.1: locale ya session (hata ile ambayo boot inaomba) inatengenezwa; haivunji build wala boot.
+chmod 0755 /usr/local/sbin/uhuru-locale-setup
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/uhuru-locale.service /etc/systemd/system/multi-user.target.wants/uhuru-locale.service
+/usr/local/sbin/uhuru-locale-setup || true
+locale -a 2>/dev/null | grep -Ei '^(en_US|sw_)' | sed 's/^/uhuru-phase61: locale ipo: /' || echo "uhuru-phase61: ONYO: hakuna locale ya en_US/sw_ baada ya kutengeneza"
+echo "uhuru-phase61: huduma ya locale imewekwa"
+exit 0

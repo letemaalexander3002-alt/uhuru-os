@@ -117,7 +117,7 @@ p5check() {
 }
 # v15.1: ukaguzi wa awamu ya 5.1 (locale, folda za mtumiaji, arifa).
 p51check() {
-    local en=no sw=no nd=no loc=na lang="" locerr=na xdg=na xdgwarn=na ntf=na xu pid envl bus gi E
+    local en=no sw=no nd=no loc=na lang="" locerr=na xdg=na xdgwarn=na ntf=na xu pid envl bus gi E nname="" lcs=""
     locale -a 2>/dev/null | grep -qi '^en_US\.utf-\?8$' && en=ok
     locale -a 2>/dev/null | grep -qi '^sw_TZ\.utf-\?8$' && sw=ok
     dpkg -s xfce4-notifyd >/dev/null 2>&1 && nd=ok
@@ -137,13 +137,15 @@ p51check() {
             if [ -f "/home/$xu/.config/user-dirs.dirs" ] && [ -d "/home/$xu/Downloads" ] && [ -d "/home/$xu/Documents" ]; then xdg=ok; else xdg=no; fi
             if [ -n "$bus" ]; then
                 gi=$(timeout -k 2 20 runuser -u "$xu" -- env DBUS_SESSION_BUS_ADDRESS="$bus" gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.GetServerInformation 2>&1 | tail -n 1)
-                case "$gi" in *notifyd*) ntf=ok ;; *) ntf=fail ;; esac
+                case "$gi" in "('"*) ntf=ok ;; *) ntf=fail ;; esac   # huduma yoyote ya org.freedesktop.Notifications iliyojibu inatosha
+                nname=$(printf '%s\n' "$gi" | sed -n "s/^('\\([^']*\\)'.*/\\1/p" | tr -cd 'A-Za-z0-9_.-' | cut -c1-24)
             else
                 ntf=nobus
             fi
         fi
     fi
-    printf 'UHURU-P51 en=%s sw=%s notifyd=%s loc=%s lang=%s locerr=%s xdg=%s xdgwarn=%s notify=%s' "$en" "$sw" "$nd" "$loc" "${lang:-none}" "$locerr" "$xdg" "$xdgwarn" "$ntf"
+    lcs=$(locale -a 2>/dev/null | grep -Ei '^(en_US|sw_)' | tr '\n' ',' | tr -cd 'A-Za-z0-9_.,-' | cut -c1-60)
+    printf 'UHURU-P51 en=%s sw=%s notifyd=%s loc=%s lang=%s locerr=%s xdg=%s xdgwarn=%s notify=%s nname=%s lcs=%s' "$en" "$sw" "$nd" "$loc" "${lang:-none}" "$locerr" "$xdg" "$xdgwarn" "$ntf" "${nname:-none}" "${lcs:-none}"
 }
 # v16.0: ukaguzi wa awamu ya 6 (bidhaa za Letema kama programu halisi, katalogi ya mbali).
 p6win() {   # p6win <mtumiaji>: inafungua TraceTZ Hub kama programu na inathibitisha dirisha lake; matokeo: "<win> <class>"
