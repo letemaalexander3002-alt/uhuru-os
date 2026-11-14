@@ -145,7 +145,70 @@ p51check() {
     fi
     printf 'UHURU-P51 en=%s sw=%s notifyd=%s loc=%s lang=%s locerr=%s xdg=%s xdgwarn=%s notify=%s' "$en" "$sw" "$nd" "$loc" "${lang:-none}" "$locerr" "$xdg" "$xdgwarn" "$ntf"
 }
-n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""
+# v16.0: ukaguzi wa awamu ya 6 (bidhaa za Letema kama programu halisi, katalogi ya mbali).
+p6win() {   # p6win <mtumiaji>: inafungua TraceTZ Hub kama programu na inathibitisha dirisha lake; matokeo: "<win> <class>"
+    local xu=$1 xa bf af id wp cmdl cls="" win=noproc i
+    xa="/home/$xu/.Xauthority"
+    bf=$(DISPLAY=:0 XAUTHORITY="$xa" xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -o '0x[0-9a-f]*' | sort -u)
+    timeout -k 2 20 runuser -u "$xu" -- env HOME="/home/$xu" DISPLAY=:0 XAUTHORITY="$xa" gio launch "/home/$xu/.local/share/applications/lgt-tracetz.desktop" >/dev/null 2>&1
+    for i in $(seq 1 60); do
+        sleep 1
+        if pgrep -u "$xu" -f -- '--class=lgt-tracetz' >/dev/null 2>&1; then win=nowin; fi
+        af=$(DISPLAY=:0 XAUTHORITY="$xa" xprop -root _NET_CLIENT_LIST 2>/dev/null | grep -o '0x[0-9a-f]*' | sort -u)
+        for id in $af; do
+            printf '%s\n' "$bf" | grep -qx "$id" && continue
+            wp=$(DISPLAY=:0 XAUTHORITY="$xa" xprop -id "$id" _NET_WM_PID 2>/dev/null | grep -o '[0-9]*$')
+            [ -n "$wp" ] || continue
+            cmdl=$(tr '\0' ' ' < "/proc/$wp/cmdline" 2>/dev/null)
+            case "$cmdl" in
+                *--app=*--class=lgt-tracetz*|*--class=lgt-tracetz*--app=*)
+                    win=ok
+                    cls=$(DISPLAY=:0 XAUTHORITY="$xa" xprop -id "$id" WM_CLASS 2>/dev/null | sed 's/.*= *//' | tr -d '" ' | tr -cd 'A-Za-z0-9_.,-' | cut -c1-80)
+                    break 2 ;;
+            esac
+        done
+    done
+    pkill -u "$xu" -f 'uhuru-pwa/tracetz' 2>/dev/null
+    for i in 1 2 3 4 5 6; do pgrep -u "$xu" -f 'uhuru-pwa/tracetz' >/dev/null 2>&1 || break; sleep 1; done
+    pkill -KILL -u "$xu" -f 'uhuru-pwa/tracetz' 2>/dev/null
+    sleep 1
+    echo "$win ${cls:-none}" > /run/uhuru-p6-win.tmp && mv -f /run/uhuru-p6-win.tmp /run/uhuru-p6-win
+}
+p6check() {
+    local files=no conf=no st real=na win=wait cls=none sync=wait xu d a f age pid sd ok=1
+    if [ -f /etc/uhuru-store/remote.json ] && [ -x /usr/local/bin/uhuru-store ] && command -v xprop >/dev/null 2>&1 && command -v gio >/dev/null 2>&1; then files=ok; fi
+    python3 -c 'import json,sys; sys.exit(0 if json.load(open("/etc/uhuru-store/remote.json"))["url"].startswith("https://") else 1)' 2>/dev/null && conf=ok
+    st=$(HOME=/root timeout -k 1 60 /usr/local/bin/uhuru-store --p6-check 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-120)
+    if [ ! -e /run/uhuru-p6-sync ]; then
+        : > /run/uhuru-p6-sync
+        echo "$(HOME=/root timeout -k 1 25 /usr/local/bin/uhuru-store --sync 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-40)" > /run/uhuru-p6-sync
+    fi
+    [ -s /run/uhuru-p6-sync ] && sync=$(tr -d '\n ' < /run/uhuru-p6-sync)
+    if [ -e /var/lib/uhuru-setup.done ]; then
+        xu=$(timeout -k 1 3 ps -C xfce4-session -o user= 2>/dev/null | head -n 1 | tr -d ' ')
+        if [ -n "$xu" ]; then
+            d="/home/$xu/.local/share/applications"
+            for a in tracetz letema-web; do
+                timeout -k 2 30 runuser -u "$xu" -- env HOME="/home/$xu" /usr/local/bin/uhuru-store --install-pwa "$a" >/dev/null 2>&1
+                f="$d/lgt-$a.desktop"
+                if [ -f "$f" ] && grep -q -- '--app=' "$f" && grep -q "^StartupWMClass=lgt-$a\$" "$f" && grep -q -- '--user-data-dir=' "$f" && grep -q '^Terminal=false' "$f"; then :; else ok=0; fi
+            done
+            [ "$ok" = 1 ] && real=ok || real=no
+            if [ ! -e /run/uhuru-p6-win ]; then
+                pid=$(pgrep -u "$xu" -f 'uhuru-share --gui' 2>/dev/null | head -n 1)
+                age=0; [ -n "$pid" ] && age=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+                sd=$(( $(date +%s) - $(stat -c %Y /var/lib/uhuru-setup.done 2>/dev/null || echo 0) ))
+                if { [ -n "$pid" ] && [ "${age:-0}" -ge 15 ]; } || [ "$sd" -ge 360 ]; then
+                    : > /run/uhuru-p6-win
+                    [ "$real" = ok ] && p6win "$xu" || echo "skip none" > /run/uhuru-p6-win
+                fi
+            fi
+            if [ -s /run/uhuru-p6-win ]; then read -r win cls < /run/uhuru-p6-win; elif [ -e /run/uhuru-p6-win ]; then win=running; fi
+        fi
+    fi
+    printf 'UHURU-P6 files=%s conf=%s store=%s real=%s win=%s cls=%s sync=%s' "$files" "$conf" "${st:-empty}" "$real" "$win" "$cls" "$sync"
+}
+n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""; P6PID=""
 while :; do
     n=$((n+1))
     sess=$(sessions)
@@ -163,6 +226,10 @@ while :; do
     if [ $((n % 4)) -eq 1 ] && { [ -z "$P5PID" ] || ! kill -0 "$P5PID" 2>/dev/null; }; then
         { emit "$(p5check)"; } &
         P5PID=$!
+    fi
+    if [ $((n % 4)) -eq 0 ] && { [ -z "$P6PID" ] || ! kill -0 "$P6PID" 2>/dev/null; }; then
+        { emit "$(p6check)"; } &
+        P6PID=$!
     fi
     if [ $((n % 4)) -eq 3 ] && { [ -z "$P4PID" ] || ! kill -0 "$P4PID" 2>/dev/null; }; then
         { emit "$(p4check)"; } &

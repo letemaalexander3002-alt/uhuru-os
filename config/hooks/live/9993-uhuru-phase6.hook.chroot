@@ -1,0 +1,13 @@
+#!/bin/sh
+# Uhuru OS awamu ya 6: bidhaa za Letema kama programu halisi (PWA) + katalogi ya mbali kutoka Vendor Console.
+# Inaendeshwa baada ya 9992. Haigusi taskbar, Start menu, Uhuru Share wala wizard.
+# Kila kosa la hapa linaishia ONYO (build haivunjiki); telemetry ya CI inathibitisha ndani ya ISO.
+chmod 0755 /usr/local/bin/uhuru-store
+mkdir -p /etc/uhuru-store
+chmod 0755 /etc/uhuru-store
+[ -f /etc/uhuru-store/remote.json ] && chmod 0644 /etc/uhuru-store/remote.json || echo "uhuru-phase6: ONYO: remote.json haipo"
+python3 -c "import ast; ast.parse(open('/usr/local/bin/uhuru-store').read())" || echo "uhuru-phase6: ONYO: uhuru-store haieleweki"
+/usr/local/bin/uhuru-store --check || echo "uhuru-phase6: ONYO: uhuru-store --check imeshindwa"
+timeout 90 /usr/local/bin/uhuru-store --p6-check || echo "uhuru-phase6: ONYO: uhuru-store --p6-check imeshindwa"
+echo "uhuru-phase6: katalogi ya mbali na programu za wavuti zimewekwa"
+exit 0

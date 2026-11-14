@@ -157,6 +157,7 @@ e2e() {
         key meta_l; sleep 4; shot 18-start-menu; key esc; sleep 2
         typestr "uhuru-store"; key ret; sleep 12; shot 19-lgt-store
         key meta_l; sleep 3; typestr "Uhuru Share"; sleep 3; shot 20-start-menu-share; key ret; sleep 8; shot 21-uhuru-share
+        sleep 100
     fi
     return 0
 }

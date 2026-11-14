@@ -5,14 +5,22 @@
   uhuru-store            fungua duka
   uhuru-store --check    kagua orodha ya programu na GTK (haihitaji skrini)
   uhuru-store --smoke    jenga dirisha bila kulionyesha (kwa CI)
+  uhuru-store --sync     pakua bidhaa mpya za PWA kutoka Vendor Console (akiba inafanya kazi bila mtandao)
+  uhuru-store --install-pwa ID | --remove-pwa ID    sakinisha/ondoa programu ya wavuti
+  uhuru-store --p6-check jaribio la ndani la katalogi ya mbali na njia za mkato za PWA (kwa CI)
 """
+import base64
 import glob
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.request
 
 VERSION = "1.0"
 SHARE = os.environ.get("UHURU_STORE_SHARE", "/usr/share/uhuru-store")
@@ -20,6 +28,20 @@ CATALOG_D = os.environ.get("UHURU_STORE_CATALOG_D", "/etc/uhuru-store/catalog.d"
 APPS_DIR = os.environ.get("UHURU_STORE_APPS_DIR",
                           os.path.join(os.path.expanduser("~"), ".local", "share", "applications"))
 ICON_DIR = os.path.join(SHARE, "icons")
+_HOME = os.path.expanduser("~")
+CACHE_DIR = os.environ.get("UHURU_STORE_CACHE", os.path.join(_HOME, ".cache", "uhuru-store"))
+REMOTE_CONF = os.environ.get("UHURU_STORE_REMOTE_CONF", "/etc/uhuru-store/remote.json")
+USER_REMOTE_CONF = os.path.join(_HOME, ".config", "uhuru-store", "remote.json")
+PWA_DATA = os.environ.get("UHURU_STORE_PWA_DATA", os.path.join(_HOME, ".local", "share", "uhuru-pwa"))
+USER_ICON_DIR = os.environ.get("UHURU_STORE_USER_ICONS", os.path.join(_HOME, ".local", "share", "uhuru-store", "icons"))
+
+# ---- katalogi ya mbali (Vendor Console): bidhaa za PWA pekee, zinakaguliwa kwa ukali kabla ya kutumika
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
+URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!&()*+,;=%-]*)?$")
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+MAX_REMOTE = 2 * 1024 * 1024
+MAX_ICON = 150 * 1024
+MAX_REMOTE_APPS = 60
 
 CSS = """
 window.lgt-store { background: #f3f7f7; }
@@ -66,8 +88,8 @@ def _read_json(path):
         return json.load(fh)
 
 
-def load_catalog():
-    """Katalogi kuu + faili zozote kwenye /etc/uhuru-store/catalog.d/*.json (zinabadilisha kwa 'id')."""
+def load_catalog(with_remote=True):
+    """Katalogi kuu + catalog.d/*.json (zinabadilisha kwa 'id') + bidhaa za PWA kutoka Vendor Console (akiba ya mbali)."""
     cat = _read_json(os.path.join(SHARE, "catalog.json"))
     cats = {c["id"]: c for c in cat.get("categories", [])}
     apps = {a["id"]: a for a in cat.get("apps", [])}
@@ -84,7 +106,173 @@ def load_catalog():
             if a["id"] not in apps:
                 order.append(a["id"])
             apps[a["id"]] = dict(apps.get(a["id"], {}), **a)
-    return {"categories": list(cats.values()), "apps": [apps[i] for i in order]}
+    result = {"categories": list(cats.values()), "apps": [apps[i] for i in order]}
+    if with_remote:
+        try:
+            _apply_remote(result)
+        except Exception as exc:  # akiba mbovu isiangushe duka
+            sys.stderr.write("remote-catalog: %s\n" % exc)
+    return result
+
+
+def _ctl_free(text):
+    return isinstance(text, str) and all(ord(c) >= 32 and ord(c) != 127 for c in text)
+
+
+def decode_png_data_uri(uri):
+    prefix = "data:image/png;base64,"
+    if not isinstance(uri, str) or not uri.startswith(prefix) or len(uri) > MAX_ICON * 2:
+        raise ValueError("ikoni si PNG (data URI)")
+    try:
+        raw = base64.b64decode(uri[len(prefix):], validate=True)
+    except Exception:
+        raise ValueError("ikoni: base64 si sahihi")
+    if len(raw) > MAX_ICON or not raw.startswith(PNG_MAGIC):
+        raise ValueError("ikoni si PNG halali au ni kubwa")
+    return raw
+
+
+def sanitize_remote_app(a, cat_ids):
+    """Inarudisha dict safi au inatupa ValueError(sababu). Aina inayokubaliwa: pwa tu, anwani: https tu."""
+    if not isinstance(a, dict):
+        raise ValueError("kipengele si object")
+    if a.get("type", "pwa") != "pwa":
+        raise ValueError("aina si pwa")
+    aid = a.get("id")
+    if not isinstance(aid, str) or not ID_RE.match(aid):
+        raise ValueError("id si sahihi")
+    out = {"id": aid, "type": "pwa", "source": "vendor"}
+    for key, limit, required in (("name", 60, True), ("summary", 240, True), ("keywords", 200, False)):
+        val = a.get(key, "")
+        if not isinstance(val, str) or not _ctl_free(val) or len(val) > limit or (required and not val.strip()):
+            raise ValueError("%s si sahihi" % key)
+        out[key] = val.strip()
+    cat = a.get("category", "letema")
+    if cat not in cat_ids:
+        raise ValueError("kundi lisilojulikana")
+    out["category"] = cat
+    url = a.get("url")
+    if not isinstance(url, str) or len(url) > 300 or not URL_RE.match(url):
+        raise ValueError("url si https sahihi")
+    out["url"] = url
+    prio = a.get("priority", 50)
+    if not isinstance(prio, int) or isinstance(prio, bool) or not -1000 <= prio <= 1000:
+        raise ValueError("priority si sahihi")
+    out["priority"] = prio
+    out["enabled"] = a.get("enabled", True) is not False
+    if a.get("icon_png"):
+        out["_icon_bytes"] = decode_png_data_uri(a["icon_png"])
+    return out
+
+
+def parse_remote(data, cat_ids):
+    """Inarudisha (apps_safi, kataliwa[(id, sababu)]). Inatupa ValueError ikiwa muundo mzima si sahihi."""
+    if not isinstance(data, dict) or data.get("format") != 1 or not isinstance(data.get("apps"), list):
+        raise ValueError("muundo wa katalogi ya mbali si sahihi")
+    good, bad, seen = [], [], set()
+    for a in data["apps"][:MAX_REMOTE_APPS]:
+        aid = a.get("id") if isinstance(a, dict) else None
+        try:
+            app = sanitize_remote_app(a, cat_ids)
+            if app["id"] in seen:
+                raise ValueError("id imerudiwa")
+            seen.add(app["id"])
+            good.append(app)
+        except ValueError as exc:
+            bad.append((str(aid)[:41], str(exc)))
+    return good, bad
+
+
+def _remote_cache_path():
+    return os.path.join(CACHE_DIR, "remote-catalog.json")
+
+
+def _write_atomic(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".part"
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+    os.replace(tmp, path)
+
+
+def load_remote_apps(cat_ids):
+    """Bidhaa safi kutoka akiba ya mwisho (inafanya kazi bila mtandao). Ikoni zinaandikwa kwenye CACHE_DIR/icons."""
+    path = _remote_cache_path()
+    if not os.path.isfile(path) or os.path.getsize(path) > MAX_REMOTE:
+        return []
+    with open(path, "rb") as fh:
+        data = json.loads(fh.read().decode("utf-8"))
+    apps, _bad = parse_remote(data, cat_ids)
+    for app in apps:
+        raw = app.pop("_icon_bytes", None)
+        if raw:
+            icon = os.path.join(CACHE_DIR, "icons", app["id"] + ".png")
+            if not os.path.isfile(icon) or os.path.getsize(icon) != len(raw):
+                _write_atomic(icon, raw)
+            app["icon_file"] = icon
+    return apps
+
+
+def _apply_remote(cat):
+    cids = {c["id"] for c in cat["categories"]}
+    apps = {a["id"]: a for a in cat["apps"]}
+    order = [a["id"] for a in cat["apps"]]
+    for r in load_remote_apps(cids):
+        cur = apps.get(r["id"])
+        if cur is not None and cur["type"] != "pwa":
+            continue  # bidhaa ya mbali haiwezi kubadilisha programu ya apt
+        if not r["enabled"]:
+            if cur is not None:
+                apps.pop(r["id"])
+                order.remove(r["id"])
+            continue
+        merged = dict(cur or {}, **{k: v for k, v in r.items() if k != "enabled"})
+        if cur is None:
+            order.append(r["id"])
+        apps[r["id"]] = merged
+    cat["apps"] = [apps[i] for i in order]
+
+
+def remote_url():
+    for path in (USER_REMOTE_CONF, REMOTE_CONF):
+        try:
+            conf = _read_json(path)
+        except Exception:
+            continue
+        if conf.get("enabled", True) is False:
+            return None
+        url = conf.get("url")
+        if isinstance(url, str) and url.startswith("https://") and len(url) < 400:
+            return url
+    return None
+
+
+def fetch_remote(url=None, allow_http=False, timeout=8):
+    """Inapakua katalogi ya Vendor Console. Inarudisha (imebadilika, idadi_ya_bidhaa_halali). Inatupa kosa mtandao ukikosekana."""
+    url = url or remote_url()
+    if not url:
+        return False, 0
+    if not (url.startswith("https://") or (allow_http and url.startswith("http://127.0.0.1"))):
+        raise ValueError("anwani si https")
+    req = urllib.request.Request(url, headers={"User-Agent": "uhuru-store/" + VERSION, "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        if not (resp.geturl().startswith("https://") or allow_http):
+            raise ValueError("redirect kwenda anwani isiyo ya https")
+        raw = resp.read(MAX_REMOTE + 1)
+    if len(raw) > MAX_REMOTE:
+        raise ValueError("katalogi ya mbali ni kubwa mno")
+    data = json.loads(raw.decode("utf-8"))
+    cids = {c["id"] for c in load_catalog(with_remote=False)["categories"]}
+    apps, _bad = parse_remote(data, cids)  # inatupa ikiwa muundo si sahihi: akiba ya zamani inabaki
+    path = _remote_cache_path()
+    try:
+        with open(path, "rb") as fh:
+            old = fh.read()
+    except OSError:
+        old = None
+    if old != raw:
+        _write_atomic(path, raw)
+    return old != raw, len(apps)
 
 
 def validate(cat):
@@ -160,42 +348,88 @@ def find_browser():
     return None
 
 
-def pwa_desktop_text(app, browser):
-    icon = os.path.join(ICON_DIR, app.get("icon", "") + ".svg")
-    if not os.path.isfile(icon):
-        icon = "applications-internet"
-    url = app["url"].replace("%", "%%").replace('"', "%22")
+def _dq(text):
+    """Hoja moja ya Exec ndani ya nukuu mbili (kanuni za .desktop): inakataa herufi hatari."""
+    if any(c in text for c in '\\"`$') or not _ctl_free(text):
+        raise RuntimeError("herufi zisizoruhusiwa kwenye Exec: %r" % text[:40])
+    return '"%s"' % text.replace("%", "%%")
+
+
+def _oneline(text):
+    return "".join(c for c in str(text) if ord(c) >= 32 and ord(c) != 127).strip()
+
+
+def pwa_data_dir(app):
+    return os.path.join(PWA_DATA, app["id"])
+
+
+def pwa_icon_path(app):
+    """Njia ya ikoni: PNG ya mbali (inanakiliwa kwa mtumiaji), au SVG ya ISO, au jina la ikoni ya mfumo."""
+    src = app.get("icon_file", "")
+    if src and os.path.isfile(src):
+        os.makedirs(USER_ICON_DIR, exist_ok=True)
+        dst = os.path.join(USER_ICON_DIR, "lgt-%s.png" % app["id"])
+        shutil.copyfile(src, dst)
+        return dst
+    svg = os.path.join(ICON_DIR, app.get("icon", "") + ".svg")
+    return svg if app.get("icon") and os.path.isfile(svg) else "applications-internet"
+
+
+def pwa_desktop_text(app, browser, icon=None):
+    """Programu ya wavuti inayofunguka kwenye dirisha lake (--app), na profile yake (--user-data-dir): haichanganyiki
+    na browser ya kawaida, ina WM_CLASS yake (lgt-<id>) kwa taskbar, na ina data yake mwenyewe (login, cache)."""
+    icon = icon if icon is not None else pwa_icon_path(app)
     wm = "lgt-" + app["id"]
+    exec_line = " ".join([browser, _dq("--app=" + app["url"]), "--class=" + wm,
+                          _dq("--user-data-dir=" + pwa_data_dir(app)), "--no-first-run", "--no-default-browser-check"])
     lines = [
         "[Desktop Entry]", "Version=1.0", "Type=Application",
-        "Name=" + app["name"], "Comment=" + app["summary"],
-        'Exec=%s --app="%s" --class=%s' % (browser, url, wm),
-        "Icon=" + icon, "Terminal=false", "Categories=Network;Office;",
-        "StartupWMClass=" + wm, "X-LGT-Store=true", "",
+        "Name=" + _oneline(app["name"]), "Comment=" + _oneline(app["summary"]),
+        "Exec=" + exec_line, "Icon=" + icon, "Terminal=false", "StartupNotify=false",
+        "Categories=Network;Office;", "StartupWMClass=" + wm, "X-LGT-Store=true",
+        "X-LGT-Source=" + ("vendor" if app.get("source") == "vendor" else "builtin"), "",
     ]
     return "\n".join(lines)
 
 
-def pwa_install(app):
+def pwa_install(app, browser=None):
     if not pwa_ready(app):
         raise RuntimeError("Anwani (URL) ya programu hii bado haijawekwa.")
-    browser = find_browser()
+    browser = browser or find_browser()
     if not browser:
         raise RuntimeError("Chromium haijasakinishwa; haiwezi kuunda programu ya wavuti.")
     os.makedirs(APPS_DIR, exist_ok=True)
     path = pwa_path(app)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(pwa_desktop_text(app, browser))
-    os.chmod(path, 0o755)
+    text = pwa_desktop_text(app, browser)
+    with open(path + ".part", "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.chmod(path + ".part", 0o755)
+    os.replace(path + ".part", path)
     _refresh_desktop_db()
 
 
 def pwa_remove(app):
-    try:
-        os.remove(pwa_path(app))
-    except FileNotFoundError:
-        pass
+    """Inaondoa njia ya mkato na ikoni; data ya programu (login) inabaki ili kusakinisha tena kusiwe na usumbufu."""
+    for path in (pwa_path(app), os.path.join(USER_ICON_DIR, "lgt-%s.png" % app["id"])):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
     _refresh_desktop_db()
+
+
+def pwa_upgrade_installed(apps):
+    """Njia za mkato za awamu ya 4 (bila profile yake) zinasasishwa kimya kimya kuwa muundo mpya."""
+    for app in apps:
+        if app.get("type") != "pwa" or not pwa_installed(app):
+            continue
+        try:
+            with open(pwa_path(app), "r", encoding="utf-8") as fh:
+                text = fh.read()
+            if "X-LGT-Store=true" in text and "--user-data-dir=" not in text:
+                pwa_install(app)
+        except Exception as exc:
+            sys.stderr.write("pwa-upgrade: %s: %s\n" % (app.get("id"), exc))
 
 
 def _refresh_desktop_db():
@@ -258,9 +492,205 @@ def cmd_check():
     return 0
 
 
+def _tiny_png():
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+    raw = b"\x00\xf5\xc5\x18\xff"
+    return (PNG_MAGIC + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) +
+            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+def _app_by_id(app_id):
+    for a in load_catalog()["apps"]:
+        if a["id"] == app_id:
+            return a
+    return None
+
+
+def cmd_pwa(argv, install):
+    flag = "--install-pwa" if install else "--remove-pwa"
+    i = argv.index(flag)
+    app = _app_by_id(argv[i + 1]) if i + 1 < len(argv) else None
+    if app is None or app["type"] != "pwa":
+        print("PWA-FAIL haipo")
+        return 1
+    try:
+        (pwa_install if install else pwa_remove)(app)
+    except Exception as exc:
+        print("PWA-FAIL %s" % str(exc).replace(" ", "_")[:60])
+        return 1
+    print("PWA-OK %s %s" % ("installed" if install else "removed", app["id"]))
+    return 0
+
+
+def cmd_sync():
+    try:
+        changed, n = fetch_remote()
+    except urllib.error.HTTPError as exc:
+        print("SYNC-FAIL http_%s" % exc.code)
+        return 1
+    except urllib.error.URLError:
+        print("SYNC-FAIL offline")
+        return 1
+    except Exception as exc:
+        print("SYNC-FAIL %s" % type(exc).__name__)
+        return 1
+    if remote_url() is None:
+        print("SYNC-NOURL")
+        return 0
+    print("SYNC-OK changed=%d apps=%d" % (changed, n))
+    return 0
+
+
+def cmd_p6check():
+    """Jaribio kamili la ndani (bila skrini, bila mtandao wa nje): katalogi ya mbali, ukaguzi wa usalama, na njia za mkato za PWA."""
+    import configparser
+    import http.server
+    import tempfile
+    import urllib.error  # noqa: F401
+    g = globals()
+    keys = ("CACHE_DIR", "APPS_DIR", "PWA_DATA", "USER_ICON_DIR", "REMOTE_CONF", "USER_REMOTE_CONF")
+    saved = {k: g[k] for k in keys}
+    tmp = tempfile.mkdtemp(prefix="uhuru-p6-")
+    step = "init"
+    srv = None
+    try:
+        g.update(CACHE_DIR=tmp + "/cache", APPS_DIR=tmp + "/apps", PWA_DATA=tmp + "/pwa", USER_ICON_DIR=tmp + "/icons",
+                 REMOTE_CONF=tmp + "/none.json", USER_REMOTE_CONF=tmp + "/none2.json")
+        step = "builtin"
+        base = load_catalog()
+        validate(base)
+        ids = {a["id"]: a for a in base["apps"]}
+        if not ({"tracetz", "letema-web"} <= set(ids)):
+            raise ValueError("bidhaa mbili za Letema hazipo")
+        uri = "data:image/png;base64," + base64.b64encode(_tiny_png()).decode()
+        full = dict(type="pwa", category="letema", summary="Maelezo", priority=5)
+        remote = {"format": 1, "apps": [
+            dict(full, id="demo-pos", name="Demo POS", url="https://pos.example.co.tz/app?x=1&y=2", icon_png=uri),
+            dict(full, id="demo-school", name="Demo Shule", url="https://shule.example.co.tz", category="education"),
+            dict(full, id="tracetz", name="TraceTZ Hub", summary="Imesasishwa kwa mbali", url="https://www.tracetzhub.lsicbusiness.online"),
+            dict(full, id="demo-hidden", name="Imefichwa", url="https://hidden.example.co.tz", enabled=False),
+            dict(full, id="thunderbird", name="Feki", url="https://evil.example.com"),
+            dict(full, id="bad-apt", type="apt", name="X", url="https://x.example.com"),
+            dict(full, id="bad-http", name="X", url="http://x.example.com"),
+            dict(full, id="Bad Id", name="X", url="https://x.example.com"),
+            dict(full, id="bad-name", name="Mstari\nmpya", url="https://x.example.com"),
+            dict(full, id="bad-cat", name="X", url="https://x.example.com", category="nope"),
+            dict(full, id="bad-quote", name="X", url='https://x.example.com/"; rm -rf ~'),
+            dict(full, id="bad-user", name="X", url="https://user@x.example.com@evil.com/"),
+            dict(full, id="bad-icon", name="X", url="https://x.example.com", icon_png="data:image/svg+xml;base64,PHN2Zz4="),
+            dict(full, id="bad-png", name="X", url="https://x.example.com", icon_png="data:image/png;base64,AAAA"),
+        ]}
+        body = json.dumps(remote).encode()
+        state = {"body": body, "code": 200}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(state["code"])
+                self.send_header("Content-Length", str(len(state["body"])))
+                self.end_headers()
+                self.wfile.write(state["body"])
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = "http://127.0.0.1:%d/catalog.json" % srv.server_address[1]
+
+        step = "fetch"
+        changed, n = fetch_remote(url, allow_http=True)
+        if not changed or n != 5:
+            raise ValueError("halali=%s (inatakiwa 5)" % n)
+        if fetch_remote(url, allow_http=True)[0]:
+            raise ValueError("fetch ya pili haipaswi kubadilika")
+        cids = {c["id"] for c in base["categories"]}
+        _good, bad = parse_remote(remote, cids)
+        if len(bad) != 9:
+            raise ValueError("zilizokataliwa=%d (inatakiwa 9)" % len(bad))
+        step = "merge"
+        merged = load_catalog()
+        mi = {a["id"]: a for a in merged["apps"]}
+        if "demo-pos" not in mi or "demo-school" not in mi:
+            raise ValueError("bidhaa halali hazikuingia")
+        if not os.path.isfile(mi["demo-pos"].get("icon_file", "")):
+            raise ValueError("ikoni haikuandikwa")
+        if mi["tracetz"]["summary"] != "Imesasishwa kwa mbali" or mi["tracetz"].get("icon") != "lgt-tracetz":
+            raise ValueError("override ya PWA ya ISO imeshindwa")
+        if "demo-hidden" in mi or mi["thunderbird"]["type"] != "apt" or any(k.startswith("bad-") for k in mi):
+            raise ValueError("kiingilio batili kimepita")
+        validate(merged)
+        step = "offline"
+        state["code"] = 404
+        try:
+            fetch_remote(url, allow_http=True)
+            raise ValueError("404 ilipaswa kushindwa")
+        except urllib.error.HTTPError:
+            pass
+        state["code"], state["body"] = 200, b"{not json"
+        try:
+            fetch_remote(url, allow_http=True)
+            raise ValueError("JSON mbovu ilipaswa kushindwa")
+        except ValueError as exc:
+            if "ilipaswa" in str(exc):
+                raise
+        if "demo-pos" not in {a["id"]: a for a in load_catalog()["apps"]}:
+            raise ValueError("akiba ya zamani ilipotea baada ya kushindwa")
+        step = "desktop"
+        done = 0
+        for app in merged["apps"]:
+            if app["type"] != "pwa":
+                continue
+            pwa_install(app, browser="chromium")
+            cp = configparser.ConfigParser(interpolation=None, strict=False)
+            cp.optionxform = str
+            cp.read(pwa_path(app), encoding="utf-8")
+            ent = cp["Desktop Entry"]
+            argv = shlex.split(ent["Exec"].replace("%%", "%"))
+            want = "lgt-" + app["id"]
+            if (argv[0] != "chromium" or argv[1] != "--app=" + app["url"] or "--class=" + want not in argv
+                    or "--user-data-dir=" + pwa_data_dir(app) not in argv):
+                raise ValueError("Exec si sahihi: %s" % app["id"])
+            if ent["StartupWMClass"] != want or ent["Terminal"] != "false" or ent["Name"] != app["name"]:
+                raise ValueError("sehemu za .desktop si sahihi: %s" % app["id"])
+            if os.path.isabs(ent["Icon"]) and not os.path.isfile(ent["Icon"]):
+                raise ValueError("ikoni haipo: %s" % app["id"])
+            done += 1
+        if done < 4:
+            raise ValueError("PWA zilizojaribiwa=%d" % done)
+        if not os.path.isfile(os.path.join(tmp, "icons", "lgt-demo-pos.png")):
+            raise ValueError("ikoni ya mtumiaji haikunakiliwa")
+        pwa_remove(mi["demo-pos"])
+        if pwa_installed(mi["demo-pos"]) or os.path.isfile(os.path.join(tmp, "icons", "lgt-demo-pos.png")):
+            raise ValueError("pwa_remove imeshindwa")
+        print("P6-OK apps=%d vendor=2 rejected=%d fetch=ok merge=ok desktop=%d security=ok browser=%s"
+              % (len(merged["apps"]), len(bad), done, "yes" if find_browser() else "no"))
+        return 0
+    except Exception as exc:
+        print("P6-FAIL step=%s %s" % (step, str(exc).replace(" ", "_")[:60]))
+        return 1
+    finally:
+        if srv is not None:
+            srv.shutdown()
+            srv.server_close()
+        g.update(saved)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main(argv):
     if "--check" in argv:
         return cmd_check()
+    if "--p6-check" in argv:
+        return cmd_p6check()
+    if "--sync" in argv:
+        return cmd_sync()
+    if "--install-pwa" in argv:
+        return cmd_pwa(argv, True)
+    if "--remove-pwa" in argv:
+        return cmd_pwa(argv, False)
     smoke = "--smoke" in argv
     try:
         import gi
@@ -277,7 +707,9 @@ def main(argv):
     GLib.set_application_name("LGT Store")
     try:
         ui = build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio)
-        win = ui["StoreWindow"](load_catalog())
+        catalog = load_catalog()
+        pwa_upgrade_installed(catalog["apps"])
+        win = ui["StoreWindow"](catalog)
         if smoke:
             win.get_child().show_all()
             win.realize()
@@ -291,6 +723,7 @@ def main(argv):
         win.connect("destroy", Gtk.main_quit)
         win.show_all()
         win.refresh_filter()
+        win.start_remote_sync()
         Gtk.main()
         return 0
     except Exception as exc:
@@ -313,6 +746,13 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
 
     def make_icon(app, fallback, size):
         img = Gtk.Image()
+        ifile = app.get("icon_file", "")
+        if ifile and os.path.isfile(ifile):
+            try:
+                img.set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_size(ifile, size, size))
+                return img
+            except Exception:
+                pass
         name = app.get("icon", "")
         svg = os.path.join(ICON_DIR, name + ".svg")
         if name and os.path.isfile(svg):
@@ -554,12 +994,42 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
             main.pack_start(scroll, True, True, 0)
             root.pack_start(main, True, True, 0)
 
+            self._add_cards()
+            self.listbox.select_row(self.rows["all"])
+
+        def _add_cards(self):
             for app in self.catalog["apps"]:
                 cat = self.cats.get(app["category"], {})
                 card = Card(self, app, cat.get("fallback_icon", "package-x-generic"), app["category"] == "letema")
                 self.cards.append(card)
                 self.flow.add(card)
-            self.listbox.select_row(self.rows["all"])
+
+        def apply_remote(self):
+            """Bidhaa mpya kutoka Vendor Console zinaonekana mara moja, bila kufunga duka."""
+            try:
+                cat = load_catalog()
+            except Exception:
+                return False
+            self.catalog = cat
+            self.cats = {c["id"]: c for c in cat["categories"]}
+            for child in list(self.flow.get_children()):
+                self.flow.remove(child)
+            self.cards = []
+            self._add_cards()
+            self.flow.show_all()
+            self.reload_state()
+            return False
+
+        def start_remote_sync(self):
+            def worker():
+                try:
+                    changed, _n = fetch_remote()
+                except Exception as exc:  # hakuna mtandao au URL haipo: akiba inatumika
+                    sys.stderr.write("remote-sync: %s\n" % exc)
+                    return
+                if changed:
+                    GLib.idle_add(self.apply_remote)
+            threading.Thread(target=worker, daemon=True).start()
 
         # ---- hali
         def reload_state(self):
@@ -677,6 +1147,11 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
                 card.set_busy(True, "Inasasisha orodha\u2026")
 
             def worker():
+                try:  # bidhaa za Letema (Vendor Console) hazihitaji ruhusa ya msimamizi
+                    if fetch_remote()[0]:
+                        GLib.idle_add(self.apply_remote)
+                except Exception as exc:
+                    sys.stderr.write("remote-sync: %s\n" % exc)
                 rc, tail = run_privileged(["apt-get", "update"])
                 GLib.idle_add(self._lists_done, rc, tail)
             threading.Thread(target=worker, daemon=True).start()

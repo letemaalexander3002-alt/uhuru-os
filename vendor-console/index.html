@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="sw">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b3b44">
+<title>Letema Group Tech · Vendor Console</title>
+<style>
+:root{--teal:#0b3b44;--teal2:#137a82;--ink:#0b2f36;--muted:#587274;--gold:#f5c518;--bg:#f3f7f7;--card:#fff;--line:#dfe9e9;--bad:#b42318;--ok:#067647;--warn:#b54708}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+header.top{position:sticky;top:0;z-index:5;background:var(--teal);color:#fff;display:flex;align-items:center;gap:12px;padding:12px 16px}
+.brand{color:var(--gold);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.title{font-size:20px;font-weight:800;line-height:1.1}
+.grow{flex:1;min-width:0}
+.brand,.title{white-space:nowrap}
+.pill{font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);white-space:nowrap;max-width:42vw;overflow:hidden;text-overflow:ellipsis}
+.pill.ok{background:#d1fadf;color:#05603a}.pill.off{background:#fee4e2;color:#912018}
+button{font:inherit;cursor:pointer}
+.icon-btn{background:transparent;border:0;color:#fff;font-size:22px;padding:4px 8px;border-radius:8px}
+.icon-btn:hover{background:rgba(255,255,255,.14)}
+main{max-width:860px;margin:0 auto;padding:16px 16px 96px}
+.hero{background:linear-gradient(90deg,var(--teal),var(--teal2));color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:16px}
+.hero h1{margin:0 0 4px;font-size:20px}.hero p{margin:0;color:#d6efef;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(11,59,68,.06);margin-bottom:12px}
+.row{display:flex;gap:12px;align-items:center}
+.app{display:flex;gap:14px;align-items:center}
+.app img,.app .ph{width:56px;height:56px;border-radius:12px;flex:none;object-fit:contain;background:#eef3f3}
+.app .ph{display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--teal);font-size:22px}
+.app .meta{flex:1;min-width:0}
+.app .name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app .sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:1px 9px;background:#e6f1f1;color:var(--teal);margin-right:6px}
+.badge.gold{background:var(--gold);color:var(--ink)}.badge.off{background:#fee4e2;color:#912018}
+.btn{border:0;border-radius:999px;padding:9px 20px;font-weight:700;background:var(--gold);color:var(--ink)}
+.btn:hover{background:#ffd43b}.btn.dark{background:var(--teal);color:#fff}.btn.dark:hover{background:var(--teal2)}
+.btn.ghost{background:transparent;border:1px solid #c9d8d8;color:var(--muted)}
+.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+h2{font-size:15px;margin:20px 0 10px;color:var(--teal);text-transform:uppercase;letter-spacing:.04em}
+label{display:block;font-weight:600;font-size:14px;margin:12px 0 4px}
+.hint{font-weight:400;color:var(--muted);font-size:12.5px;margin-top:3px}
+input[type=text],input[type=password],input[type=number],input[type=url],select,textarea{width:100%;font:inherit;padding:10px 12px;border:1px solid #c9d8d8;border-radius:10px;background:#fff;color:var(--ink)}
+textarea{min-height:84px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--gold);border-color:var(--gold)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.banner{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.banner.warn{background:#fffaeb;border:1px solid #fedf89;color:var(--warn)}
+.banner.bad{background:#fef3f2;border:1px solid #fecdca;color:var(--bad)}
+.banner.ok{background:#ecfdf3;border:1px solid #abefc6;color:var(--ok)}
+details{margin-top:10px}summary{cursor:pointer;font-weight:600;color:var(--teal)}
+ol{padding-left:20px;margin:8px 0}li{margin:4px 0}
+code{background:#eef3f3;border-radius:6px;padding:1px 6px;font-size:13px}
+#overlay{position:fixed;inset:0;background:rgba(11,47,54,.55);z-index:20;display:flex;align-items:flex-end;justify-content:center;overflow:auto}
+#overlay[hidden]{display:none}
+.sheet{background:var(--bg);width:100%;max-width:760px;border-radius:20px 20px 0 0;padding:18px 16px 28px;max-height:96vh;overflow:auto}
+@media(min-width:800px){#overlay{align-items:center}.sheet{border-radius:20px}}
+.sheet h3{margin:0 0 6px;font-size:18px}
+.preview{border:1px dashed #b7c9c9;border-radius:16px;padding:14px;background:#fff;margin:6px 0 4px;max-width:320px}
+.preview .pn{font-weight:700}.preview .pd{color:var(--muted);font-size:14px;margin:8px 0 10px;min-height:40px}
+.preview .pb{display:inline-block;background:var(--gold);color:var(--ink);font-weight:800;border-radius:999px;padding:5px 18px;font-size:14px}
+.switch{display:flex;gap:10px;align-items:center;margin-top:12px;font-weight:600}
+.switch input{width:20px;height:20px}
+.errs{margin:10px 0 0;padding:10px 14px;border-radius:12px;background:#fef3f2;color:var(--bad);font-size:14px}
+.errs ul{margin:4px 0 0;padding-left:18px}
+#busy{position:fixed;left:0;right:0;top:0;z-index:30;background:var(--gold);color:var(--ink);font-weight:700;text-align:center;padding:8px;font-size:14px}
+#busy[hidden]{display:none}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--teal);color:#fff;padding:12px 18px;border-radius:14px;max-width:92vw;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:14px}
+#toast[hidden]{display:none}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<div id="busy" hidden></div>
+<header class="top">
+  <div class="grow"><div class="brand">Letema Group Tech</div><div class="title">Vendor Console</div></div>
+  <span id="pill" class="pill off">Haijaunganishwa</span>
+  <button class="icon-btn" id="gear" title="Mipangilio" aria-label="Mipangilio">⚙</button>
+</header>
+<main id="app"></main>
+<div id="overlay" hidden><div class="sheet" id="sheet"></div></div>
+<div id="toast" hidden role="status"></div>
+
+<script>
+'use strict';
+/* ====================== Mipangilio ya msingi ====================== */
+const CATEGORIES = [["letema","Bidhaa za Letema Group Tech"],["office","Ofisi na Uzalishaji"],["internet","Mtandao"],
+  ["graphics","Picha na Michoro"],["media","Sauti na Video"],["education","Elimu"],["tools","Zana za Mfumo"]];
+const CAT_NAME = Object.fromEntries(CATEGORIES);
+const DEFAULTS = {owner:"letemaalexander3002-alt", repo:"uhuru-os", branch:"master",
+  path:"vendor-catalog/catalog.json", builtin:"config/includes.chroot/usr/share/uhuru-store/catalog.json"};
+const LIM = {name:60, summary:240, keywords:200, iconBytes:60*1024, catalogBytes:900*1024};
+const ID_RE = /^[a-z0-9][a-z0-9-]{1,40}$/;
+const URL_RE = /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?(\/[A-Za-z0-9._~:\/?#\[\]@!&()*+,;=%-]*)?$/;
+
+class Err extends Error {}
+
+/* ====================== Hifadhi ya kifaa (token inabaki hapa tu) ====================== */
+const mem = {};
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return mem[k] || null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){ mem[k] = v; } },
+  del(k){ try { localStorage.removeItem(k); } catch(e){ delete mem[k]; } }
+};
+function loadCfg(){
+  let c = {};
+  try { c = JSON.parse(store.get('lgtvc.cfg') || '{}'); } catch(e){}
+  return Object.assign({}, DEFAULTS, c, {token: store.get('lgtvc.tok') || ''});
+}
+function saveCfg(c){
+  const {token, ...rest} = c;
+  store.set('lgtvc.cfg', JSON.stringify(rest));
+  store.set('lgtvc.tok', token);
+}
+
+/* ====================== Hali ====================== */
+const S = {cfg: loadCfg(), view: 'setup', catalog: null, sha: null, builtins: null, repoInfo: null, warn: [], status: null};
+
+/* ====================== Zana za DOM ====================== */
+const $ = (s, el=document) => el.querySelector(s);
+function h(tag, props, ...kids){
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(props || {})){
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked') el.checked = true;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()){
+    if (kid == null || kid === false) continue;
+    el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+let toastTimer = null;
+function toast(msg, ms=5000){
+  const t = $('#toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+}
+function setBusy(msg){ const b = $('#busy'); b.textContent = msg || ''; b.hidden = !msg; }
+
+/* ====================== Ukaguzi (sawa na ule wa LGT Store) ====================== */
+function ctlFree(s){ for (const ch of s){ const c = ch.codePointAt(0); if (c < 32 || c === 127) return false; } return true; }
+function slugify(name){
+  let s = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 41).replace(/-+$/g, '');
+  if (s.length < 2) s = 'app-' + Math.random().toString(36).slice(2, 6);
+  return s;
+}
+function validateApp(a){
+  const e = [];
+  if (!ID_RE.test(a.id || '')) e.push('ID: herufi ndogo, namba na "-" tu (herufi 2 hadi 41, anza na herufi/namba).');
+  if (!a.name || !a.name.trim() || a.name.length > LIM.name || !ctlFree(a.name)) e.push('Jina: linahitajika (si zaidi ya herufi ' + LIM.name + ').');
+  if (!a.summary || !a.summary.trim() || a.summary.length > LIM.summary || !ctlFree(a.summary)) e.push('Maelezo: yanahitajika (si zaidi ya herufi ' + LIM.summary + ', mstari mmoja).');
+  if ((a.keywords || '').length > LIM.keywords || !ctlFree(a.keywords || '')) e.push('Maneno ya kutafuta: si zaidi ya herufi ' + LIM.keywords + '.');
+  if (!CAT_NAME[a.category]) e.push('Kundi si sahihi.');
+  if (!a.url || a.url.length > 300 || !URL_RE.test(a.url)) e.push('URL lazima ianze na https:// na isiwe na nafasi wala nukuu.');
+  if (!Number.isInteger(a.priority) || a.priority < -1000 || a.priority > 1000) e.push('Kipaumbele: namba nzima kati ya -1000 na 1000 (ndogo = inaonekana kwanza).');
+  if (a.icon_png && (!a.icon_png.startsWith('data:image/png;base64,'))) e.push('Ikoni lazima iwe PNG.');
+  return e;
+}
+function cleanApp(a){
+  const out = {id: a.id, type: 'pwa', name: a.name.trim(), category: a.category, summary: a.summary.trim(),
+    url: a.url.trim(), priority: a.priority, keywords: (a.keywords || '').trim(), enabled: a.enabled !== false};
+  if (a.icon_png) out.icon_png = a.icon_png;
+  return out;
+}
+
+/* ====================== GitHub ====================== */
+const enc = p => p.split('/').map(encodeURIComponent).join('/');
+function toB64(str){
+  const bytes = new TextEncoder().encode(str); let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function fromB64(b64){
+  const bin = atob(b64.replace(/\s/g, ''));
+  return new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
+}
+async function gh(method, path, body, accept){
+  const c = S.cfg;
+  let res;
+  try {
+    res = await fetch('https://api.github.com' + path, {method, cache: 'no-store',
+      headers: Object.assign({'Authorization': 'Bearer ' + c.token, 'Accept': accept || 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'}, body ? {'Content-Type': 'application/json'} : {}),
+      body: body ? JSON.stringify(body) : undefined});
+  } catch(e){ throw new Err('Hakuna mtandao au GitHub haifikiki. Angalia muunganisho kisha ujaribu tena.'); }
+  return res;
+}
+async function ghError(res, what){
+  let msg = ''; try { msg = (await res.json()).message || ''; } catch(e){}
+  if (res.status === 401) return new Err('Token si sahihi au imeisha muda. Tengeneza token mpya (⚙ Mipangilio).');
+  if (res.status === 403) return new Err(/rate limit/i.test(msg) ? 'GitHub imezuia maombi mengi kwa muda. Subiri dakika chache.' : 'Token haina ruhusa. Inahitaji "Contents: Read and write" kwa repo hii.');
+  if (res.status === 404) return new Err(what === 'repo' ? 'Repo haipatikani, au token haina ufikiaji wa repo hii. Angalia jina la mmiliki/repo na ruhusa za token.' : 'Faili halipatikani.');
+  return new Err('GitHub imerudisha hitilafu ' + res.status + (msg ? ': ' + msg : ''));
+}
+async function readFile(path){
+  const c = S.cfg;
+  const res = await gh('GET', '/repos/' + enc(c.owner) + '/' + enc(c.repo) + '/contents/' + enc(path) + '?ref=' + encodeURIComponent(c.branch));
+  if (res.status === 404) return null;
+  if (!res.ok) throw await ghError(res);
+  const j = await res.json();
+  let text;
+  if (j.content && j.encoding === 'base64') text = fromB64(j.content);
+  else {
+    const raw = await gh('GET', '/repos/' + enc(c.owner) + '/' + enc(c.repo) + '/contents/' + enc(path) + '?ref=' + encodeURIComponent(c.branch), null, 'application/vnd.github.raw+json');
+    if (!raw.ok) throw await ghError(raw);
+    text = await raw.text();
+  }
+  return {sha: j.sha, text};
+}
+async function readCatalog(){
+  const f = await readFile(S.cfg.path);
+  if (!f) return {catalog: {format: 1, updated: '', apps: []}, sha: null};
+  let cat;
+  try { cat = JSON.parse(f.text); } catch(e){ throw new Err('Faili la katalogi (' + S.cfg.path + ') limeharibika. Lirekebishe kwenye GitHub au lifute.'); }
+  if (!cat || cat.format !== 1 || !Array.isArray(cat.apps)) throw new Err('Faili la katalogi lina muundo usiojulikana.');
+  return {catalog: cat, sha: f.sha};
+}
+/* Inasoma upya kutoka GitHub, inatumia mabadiliko, inaandika; mgongano wa sha ukitokea inarudia (hadi mara 3). */
+async function publish(mutate, message){
+  const c = S.cfg;
+  for (let attempt = 0; attempt < 3; attempt++){
+    const cur = await readCatalog();
+    const next = mutate(JSON.parse(JSON.stringify(cur.catalog)));
+    next.format = 1; next.updated = new Date().toISOString();
+    const text = JSON.stringify(next, null, 1) + '\n';
+    if (new TextEncoder().encode(text).length > LIM.catalogBytes) throw new Err('Katalogi imekuwa kubwa mno (zaidi ya 900KB). Futa bidhaa zisizotumika au tumia ikoni ndogo.');
+    const body = {message, content: toB64(text), branch: c.branch};
+    if (cur.sha) body.sha = cur.sha;
+    const res = await gh('PUT', '/repos/' + enc(c.owner) + '/' + enc(c.repo) + '/contents/' + enc(c.path), body);
+    if (res.ok){ const j = await res.json(); S.catalog = next; S.sha = j.content && j.content.sha; return next; }
+    if (res.status === 409 || res.status === 422) continue;
+    throw await ghError(res);
+  }
+  throw new Err('Imeshindikana kuchapisha: mgongano wa mabadiliko mara 3. Jaribu tena.');
+}
+async function checkPublic(){
+  const c = S.cfg;
+  const url = 'https://raw.githubusercontent.com/' + c.owner + '/' + c.repo + '/' + c.branch + '/' + c.path + '?cb=' + Date.now();
+  try { const r = await fetch(url, {cache: 'no-store'}); return r.ok; } catch(e){ return null; }
+}
+
+/* ====================== Ikoni: picha yoyote -> PNG ndogo ====================== */
+function blobToDataURI(blob){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Err('Imeshindikana kusoma picha.')); r.readAsDataURL(blob); });
+}
+async function fileToPng(file){
+  if (!file.type.startsWith('image/')) throw new Err('Chagua faili la picha (PNG, JPG, SVG au WEBP).');
+  if (file.size > 5 * 1024 * 1024) throw new Err('Picha ni kubwa mno (zaidi ya 5MB).');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Err('Picha haisomeki.')); i.src = url; });
+    for (const size of [192, 128, 96]){
+      const cv = document.createElement('canvas'); cv.width = cv.height = size;
+      const g = cv.getContext('2d');
+      const w = img.naturalWidth || size, hh = img.naturalHeight || size, k = Math.min(size / w, size / hh);
+      const dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(hh * k));
+      g.clearRect(0, 0, size, size); g.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      if (blob && blob.size <= LIM.iconBytes) return await blobToDataURI(blob);
+    }
+    throw new Err('Ikoni ni ngumu mno (inazidi 60KB hata ikipunguzwa). Tumia picha rahisi zaidi.');
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ====================== Muunganisho ====================== */
+function setPill(ok, text){ const p = $('#pill'); p.className = 'pill ' + (ok ? 'ok' : 'off'); p.textContent = text; }
+async function connect(){
+  const c = S.cfg;
+  if (!c.token){ S.view = 'setup'; render(); return; }
+  setBusy('Inaunganisha na GitHub…');
+  try {
+    const res = await gh('GET', '/repos/' + enc(c.owner) + '/' + enc(c.repo));
+    if (!res.ok) throw await ghError(res, 'repo');
+    const info = await res.json();
+    if (!info.permissions || !info.permissions.push) throw new Err('Token haina ruhusa ya kuandika kwenye repo hii. Weka "Contents: Read and write".');
+    S.repoInfo = info; S.warn = [];
+    if (info.private) S.warn.push('Repo hii ni ya FARAGHA (private): kompyuta za watumiaji hazitaweza kusoma katalogi. Ifanye repo iwe ya umma (public), au tumia repo ya umma kwa katalogi tu.');
+    const cat = await readCatalog(); S.catalog = cat.catalog; S.sha = cat.sha;
+    try {
+      const b = await readFile(c.builtin);
+      S.builtins = b ? JSON.parse(b.text) : null;
+    } catch(e){ S.builtins = null; }
+    setPill(true, c.owner + '/' + c.repo);
+    S.view = 'main';
+  } catch(e){
+    setPill(false, 'Haijaunganishwa');
+    S.view = 'setup'; S.error = e.message || String(e);
+  } finally { setBusy(''); render(); }
+}
+
+/* ====================== Skrini: Mipangilio ====================== */
+function viewSetup(){
+  const c = S.cfg;
+  const f = {};
+  const field = (key, label, type, hint) => {
+    f[key] = h('input', {type: type || 'text', value: c[key] || '', autocomplete: 'off', spellcheck: 'false', id: 'f-' + key});
+    return [h('label', {for: 'f-' + key}, label), f[key], hint ? h('div', {class: 'hint', text: hint}) : null];
+  };
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Unganisha na GitHub'}),
+      h('p', {text: 'Console hii inaandika orodha ya bidhaa za PWA kwenye repo yako. LGT Store ya kila kompyuta ya Uhuru OS inaisoma yenyewe.'})),
+    S.error ? h('div', {class: 'banner bad', text: S.error}) : null,
+    h('div', {class: 'card'},
+      field('token', 'GitHub token (fine-grained)', 'password', 'Inabaki kwenye kifaa hiki tu. Inatumwa kwa api.github.com pekee.'),
+      h('details', {},
+        h('summary', {text: 'Jinsi ya kutengeneza token (mara moja tu)'}),
+        h('ol', {},
+          h('li', {}, 'GitHub → picha yako → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.'),
+          h('li', {}, 'Repository access: "Only select repositories" → chagua repo ya ', h('code', {text: c.repo}), '.'),
+          h('li', {}, 'Permissions → Repository permissions → ', h('code', {text: 'Contents: Read and write'}), '.'),
+          h('li', {}, 'Generate token, nakili (inaanza na ', h('code', {text: 'github_pat_'}), ') na ubandike kwenye kisanduku hapo juu.'))),
+      h('div', {class: 'grid2'},
+        h('div', {}, field('owner', 'Mmiliki (owner)')),
+        h('div', {}, field('repo', 'Repo'))),
+      h('div', {class: 'grid2'},
+        h('div', {}, field('branch', 'Branch')),
+        h('div', {}, field('path', 'Faili la katalogi'))),
+      field('builtin', 'Katalogi ya ISO (ya kusoma tu)', 'text', 'Inatumika kuonyesha bidhaa zilizomo ndani ya ISO na kuepuka kugongana majina.'),
+      h('div', {class: 'row', style: 'margin-top:16px'},
+        h('button', {class: 'btn', id: 'save-cfg', text: 'Hifadhi na Jaribu', onclick: () => {
+          const nc = {}; for (const k of Object.keys(f)) nc[k] = f[k].value.trim();
+          if (!nc.token){ S.error = 'Weka token.'; render(); return; }
+          if (!nc.owner || !nc.repo || !nc.branch || !nc.path){ S.error = 'Jaza mmiliki, repo, branch na faili la katalogi.'; render(); return; }
+          if (nc.path.includes('..') || nc.path.startsWith('/')){ S.error = 'Njia ya faili si sahihi.'; render(); return; }
+          S.cfg = nc; S.error = ''; saveCfg(nc); connect();
+        }}),
+        S.cfg.token ? h('button', {class: 'btn ghost', text: 'Ondoa token', onclick: () => { store.del('lgtvc.tok'); S.cfg.token = ''; S.view = 'setup'; setPill(false, 'Haijaunganishwa'); render(); toast('Token imeondolewa kwenye kifaa hiki.'); }}) : null)));
+}
+
+/* ====================== Skrini: Orodha ====================== */
+function hostOf(u){ try { return new URL(u).host; } catch(e){ return u; } }
+function appRow(a, opts){
+  const icon = a.icon_png ? h('img', {src: a.icon_png, alt: ''}) : h('div', {class: 'ph', text: (a.name || '?').trim().charAt(0).toUpperCase()});
+  return h('div', {class: 'card app'}, icon,
+    h('div', {class: 'meta'},
+      h('div', {class: 'name', text: a.name}),
+      h('div', {class: 'sub'}, h('span', {class: 'badge' + (a.category === 'letema' ? ' gold' : ''), text: a.category === 'letema' ? 'Letema' : (CAT_NAME[a.category] || a.category)}),
+        a.enabled === false ? h('span', {class: 'badge off', text: 'Imefichwa'}) : null, hostOf(a.url))),
+    opts && opts.edit ? h('button', {class: 'btn dark', text: 'Hariri', onclick: () => openEditor(a)}) : null);
+}
+function viewMain(){
+  const apps = (S.catalog && S.catalog.apps) || [];
+  const built = S.builtins && Array.isArray(S.builtins.apps) ? S.builtins.apps : [];
+  const builtPwa = built.filter(a => a.type === 'pwa');
+  return h('div', {},
+    ...S.warn.map(w => h('div', {class: 'banner warn', text: w})),
+    S.status ? h('div', {class: 'banner ' + (S.status.pub === false ? 'warn' : 'ok'), id: 'status'},
+      h('strong', {text: 'Imechapishwa ✔ '}), S.status.when + '. ',
+      S.status.pub === true ? 'Inapatikana hadharani; kompyuta za Uhuru OS zitaiona zikifungua LGT Store au kubonyeza "Sasisha" (zikiwa na mtandao). GitHub inaweza kuchelewa hadi dakika 5.'
+        : S.status.pub === false ? 'LAKINI faili haipatikani hadharani (repo ni private?). Watumiaji hawataiona hadi repo iwe ya umma.'
+        : 'Haikuweza kuhakiki upatikanaji wa hadharani.') : null,
+    h('div', {class: 'hero'}, h('h1', {text: 'Bidhaa za PWA kwenye LGT Store'}),
+      h('p', {text: 'Ongeza, hariri au ficha bidhaa. Hazihitaji kujenga ISO upya: zinaonekana kwenye LGT Store na zinafunguka kama programu halisi.'})),
+    h('div', {class: 'row'}, h('div', {class: 'grow'}, h('strong', {text: apps.length + ' kwenye katalogi ya mbali'})),
+      h('button', {class: 'btn', id: 'add', text: '+ Ongeza PWA', onclick: () => openEditor(null)})),
+    h('div', {style: 'height:10px'}),
+    apps.length ? apps.map(a => appRow(a, {edit: true})) : h('div', {class: 'card', id: 'empty', text: 'Bado hakuna bidhaa. Bonyeza "+ Ongeza PWA".'}),
+    h('h2', {text: 'Zilizomo ndani ya ISO (zinasomwa tu)'}),
+    builtPwa.length ? builtPwa.map(a => appRow(Object.assign({}, a, {enabled: true}), {})) : h('div', {class: 'card', text: S.builtins ? 'Hakuna PWA kwenye katalogi ya ISO.' : 'Katalogi ya ISO haikusomeka (angalia njia kwenye ⚙ Mipangilio).'}),
+    built.length ? h('div', {class: 'hint', text: 'Pamoja na programu ' + built.filter(a => a.type === 'apt').length + ' za Debian.'}) : null,
+    h('div', {class: 'row', style: 'margin-top:16px'}, h('button', {class: 'btn ghost', text: 'Sasisha orodha', onclick: connect})),
+    h('div', {class: 'foot', text: 'Letema Group Tech · Vendor Console 1.0'}));
+}
+
+/* ====================== Mhariri ====================== */
+function openEditor(app){
+  const isNew = !app;
+  const A = app ? Object.assign({}, app) : {id: '', type: 'pwa', name: '', category: 'letema', summary: '', url: 'https://', priority: 50, keywords: '', enabled: true, icon_png: ''};
+  let idTouched = !isNew;
+  const sheet = $('#sheet'); sheet.textContent = '';
+  const el = {};
+  const mk = (key, props) => { el[key] = h(props.tag || 'input', props.attrs || {}); return el[key]; };
+  const prev = h('div', {class: 'preview'});
+  const errBox = h('div', {class: 'errs', hidden: true});
+  const idHint = h('div', {class: 'hint'});
+  function read(){
+    A.name = el.name.value; A.url = el.url.value.trim(); A.category = el.category.value; A.summary = el.summary.value.replace(/\s*\n\s*/g, ' ');
+    A.keywords = el.keywords.value; A.priority = el.priority.value === '' ? NaN : Number(el.priority.value);
+    A.enabled = el.enabled.checked; A.id = el.id.value.trim();
+  }
+  function refresh(){
+    read();
+    if (!idTouched && isNew){ el.id.value = A.id = slugify(A.name || ''); if (!A.name) el.id.value = A.id = ''; }
+    const built = (S.builtins && S.builtins.apps) || [];
+    const clash = built.find(b => b.id === A.id);
+    idHint.textContent = !A.id ? '' : clash ? (clash.type === 'pwa' ? 'Onyo: ID hii ni ya bidhaa ya ISO "' + clash.name + '"; maelezo yako yatabadilisha yake.' : 'ID hii ni ya programu ya Debian ("' + clash.name + '"): chagua ID nyingine.')
+      : (isNew && ((S.catalog && S.catalog.apps) || []).some(x => x.id === A.id)) ? 'ID hii tayari ipo kwenye katalogi: itabadilisha iliyopo.' : '';
+    prev.textContent = '';
+    prev.append(h('div', {class: 'app'}, A.icon_png ? h('img', {src: A.icon_png, alt: ''}) : h('div', {class: 'ph', text: (A.name || '?').trim().charAt(0).toUpperCase()}),
+      h('div', {class: 'meta'}, h('div', {class: 'pn', text: A.name || 'Jina la bidhaa'}), h('span', {class: 'badge' + (A.category === 'letema' ? ' gold' : ''), text: A.category === 'letema' ? 'Letema' : 'PWA'}))),
+      h('div', {class: 'pd', text: A.summary || 'Maelezo mafupi yataonekana hapa.'}), h('span', {class: 'pb', text: 'Sakinisha'}));
+  }
+  const field = (label, node, hint) => h('div', {}, h('label', {}, label), node, hint ? h('div', {class: 'hint', text: hint}) : null);
+  mk('name', {attrs: {type: 'text', value: A.name, maxlength: LIM.name, id: 'e-name', placeholder: 'mf. Letema POS'}});
+  mk('id', {attrs: {type: 'text', value: A.id, id: 'e-id', spellcheck: 'false', autocomplete: 'off'}});
+  if (!isNew) el.id.disabled = true;
+  mk('url', {attrs: {type: 'url', value: A.url, id: 'e-url', spellcheck: 'false', autocomplete: 'off', placeholder: 'https://mfano.co.tz'}});
+  el.category = h('select', {id: 'e-category'}, CATEGORIES.map(([id, nm]) => h('option', {value: id, text: nm})));
+  el.category.value = A.category;
+  mk('summary', {tag: 'textarea', attrs: {id: 'e-summary', maxlength: LIM.summary, placeholder: 'Maelezo mafupi ya Kiswahili (mstari mmoja)'}});
+  el.summary.value = A.summary;
+  mk('keywords', {attrs: {type: 'text', value: A.keywords || '', id: 'e-keywords', maxlength: LIM.keywords, placeholder: 'maneno ya kutafuta yaliyotenganishwa kwa nafasi'}});
+  mk('priority', {attrs: {type: 'number', value: String(A.priority), id: 'e-priority', step: '1'}});
+  mk('enabled', {attrs: {type: 'checkbox', id: 'e-enabled'}}); el.enabled.checked = A.enabled !== false;
+  const file = h('input', {type: 'file', accept: 'image/*', id: 'e-icon'});
+  file.addEventListener('change', async () => {
+    if (!file.files[0]) return;
+    try { setBusy('Inatengeneza ikoni…'); A.icon_png = await fileToPng(file.files[0]); refresh(); }
+    catch(e){ showErrs([e.message]); } finally { setBusy(''); }
+  });
+  function showErrs(list){ errBox.textContent = ''; errBox.hidden = !list.length; if (list.length){ errBox.append('Rekebisha haya:', h('ul', {}, list.map(x => h('li', {text: x})))); errBox.scrollIntoView({block: 'nearest'}); } }
+  for (const k of ['name', 'id', 'url', 'category', 'summary', 'keywords', 'priority', 'enabled']){
+    el[k].addEventListener('input', () => { if (k === 'id') idTouched = true; refresh(); });
+    el[k].addEventListener('change', refresh);
+  }
+  async function save(){
+    read(); const errs = validateApp(A);
+    const clash = ((S.builtins && S.builtins.apps) || []).find(b => b.id === A.id && b.type !== 'pwa');
+    if (clash) errs.push('ID "' + A.id + '" ni ya programu ya Debian; chagua ID nyingine.');
+    showErrs(errs); if (errs.length) return;
+    const clean = cleanApp(A);
+    try {
+      setBusy('Inachapisha kwenye GitHub…'); $('#e-save').disabled = true;
+      await publish(cat => { const i = cat.apps.findIndex(x => x.id === clean.id); if (i >= 0) cat.apps[i] = clean; else cat.apps.push(clean); return cat; },
+        'vendor-console: ' + (isNew ? 'ongeza' : 'hariri') + ' ' + clean.name + ' [skip ci]');
+      closeEditor(); await afterPublish(); toast('Imechapishwa: ' + clean.name);
+    } catch(e){ showErrs([e.message || String(e)]); $('#e-save').disabled = false; } finally { setBusy(''); }
+  }
+  async function remove(){
+    if (!confirm('Futa "' + A.name + '" kwenye katalogi? Haitaonekana tena kwenye LGT Store.')) return;
+    try {
+      setBusy('Inafuta…');
+      await publish(cat => { cat.apps = cat.apps.filter(x => x.id !== A.id); return cat; }, 'vendor-console: futa ' + A.name + ' [skip ci]');
+      closeEditor(); await afterPublish(); toast('Imefutwa: ' + A.name);
+    } catch(e){ showErrs([e.message || String(e)]); } finally { setBusy(''); }
+  }
+  sheet.append(h('h3', {text: isNew ? 'Ongeza PWA mpya' : 'Hariri: ' + A.name}),
+    h('div', {class: 'hint', text: 'Itafunguka kama programu yake kwenye Uhuru OS (dirisha lake, ikoni yake, kwenye menyu).'}),
+    field('Jina la bidhaa', el.name), field('URL ya programu (https)', el.url), field('ID (ya ndani, haibadiliki baadaye)', el.id), idHint,
+    field('Kundi', el.category), field('Maelezo mafupi', el.summary), field('Maneno ya kutafuta (si lazima)', el.keywords),
+    field('Kipaumbele', el.priority, 'Namba ndogo inaonekana kwanza ndani ya kundi.'),
+    field('Ikoni (picha yoyote; inabadilishwa kuwa PNG ndogo)', file, 'Bila ikoni, Store itatumia ikoni ya kundi.'),
+    h('label', {class: 'switch'}, el.enabled, 'Ionekane kwenye LGT Store'),
+    h('div', {class: 'hint', text: 'Hakiki:'}), prev, errBox,
+    h('div', {class: 'row', style: 'margin-top:18px;flex-wrap:wrap'},
+      h('button', {class: 'btn', id: 'e-save', text: 'Hifadhi na Chapisha', onclick: save}),
+      h('button', {class: 'btn ghost', text: 'Ghairi', onclick: closeEditor}),
+      isNew ? null : h('button', {class: 'btn danger', text: 'Futa', onclick: remove})));
+  $('#overlay').hidden = false; refresh();
+}
+function closeEditor(){ $('#overlay').hidden = true; $('#sheet').textContent = ''; }
+$('#overlay').addEventListener('mousedown', e => { if (e.target.id === 'overlay') closeEditor(); });
+
+async function afterPublish(){
+  const pub = await checkPublic();
+  S.status = {when: new Date().toLocaleTimeString('sw-TZ', {hour: '2-digit', minute: '2-digit'}), pub};
+  render();
+}
+
+/* ====================== Uchoraji ====================== */
+function render(){
+  const app = $('#app'); app.textContent = '';
+  app.append(S.view === 'main' ? viewMain() : viewSetup());
+}
+$('#gear').addEventListener('click', () => { S.view = 'setup'; S.error = ''; render(); });
+
+setPill(false, 'Haijaunganishwa');
+if (S.cfg.token) connect(); else render();
+</script>
+</body>
+</html>

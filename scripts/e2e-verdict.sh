@@ -102,6 +102,24 @@ elif [ "${RAMA:-0}" -lt 300 ]; then
 else
     echo "CHECK PASS: e2e: RAM 2GB: desktop, LGT Store na Uhuru Share vinafanya kazi kwenye ${RAMT}MB (wazi ${RAMA}MB)"
 fi
+# ---- Awamu ya 6: Letema kama programu halisi (PWA), katalogi ya mbali na Vendor Console (v16.0) ----
+P6=$(slogc | grep '^UHURU-P6 ' | tail -n 40)
+p6() { printf '%s\n' "$P6" | grep -Eq "$1"; }
+P6WIN=$(printf '%s\n' "$P6" | grep -o 'win=[^ ]* cls=[^ ]*' | grep -v 'win=wait\|win=running' | tail -n 1)
+if [ -z "$P6" ]; then
+    fail "awamu ya 6: hakuna ripoti ya UHURU-P6 (telemetry haikufanya kazi)"
+else
+    if p6 'files=ok conf=ok'; then echo "CHECK PASS: e2e: awamu ya 6: LGT Store, usanidi wa katalogi ya mbali (https) na zana za ukaguzi zipo kwenye ISO"; else fail "awamu ya 6: faili/usanidi haujakamilika ($(printf '%s\n' "$P6" | tail -n 1 | cut -c1-120))"; fi
+    if p6 'store=P6-OK'; then echo "CHECK PASS: e2e: awamu ya 6: katalogi ya mbali inakaguliwa kwa ukali (hakuna apt/http/sindano), akiba inafanya kazi bila mtandao, njia za mkato za PWA ni sahihi"; else fail "awamu ya 6: uhuru-store --p6-check imeshindwa ($(printf '%s\n' "$P6" | grep -o 'store=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p6 'real=ok'; then echo "CHECK PASS: e2e: awamu ya 6: TraceTZ Hub na Letema Group Tech zinasakinishwa kama programu halisi (--app, profile yake, WM_CLASS) kwenye session ya mtumiaji"; else fail "awamu ya 6: PWA za Letema hazikusakinishwa kwenye session ($(printf '%s\n' "$P6" | grep -o 'real=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if printf '%s\n' "$P6WIN" | grep -q 'win=ok'; then
+        echo "CHECK PASS: e2e: awamu ya 6: TraceTZ Hub inafunguka kama dirisha la programu yake (si tab ya browser)"
+        if printf '%s\n' "$P6WIN" | grep -q 'lgt-tracetz'; then echo "CHECK PASS: e2e: awamu ya 6: dirisha lina WM_CLASS ya programu (taskbar inaipanga kama programu yake)"; else echo "CHECK INFO: e2e: awamu ya 6: WM_CLASS ya dirisha si lgt-tracetz ($(printf '%s\n' "$P6WIN" | grep -o 'cls=[^ ]*'))"; fi
+    else
+        fail "awamu ya 6: TraceTZ Hub haikufungua dirisha la programu (${P6WIN:-hakuna matokeo ya win; $(printf '%s\n' "$P6" | grep -o 'win=[^ ]*' | sort -u | tr '\n' ' ')})"
+    fi
+    echo "CHECK INFO: e2e: awamu ya 6: katalogi ya mbali kutoka GitHub ($(printf '%s\n' "$P6" | grep -o 'sync=[^ ]*' | tail -n 1)); SYNC-OK = repo ni ya umma na inasomeka, http_404 = repo ni private au faili halipo"
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0
