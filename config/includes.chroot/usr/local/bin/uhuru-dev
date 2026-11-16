@@ -6,6 +6,7 @@
 CORE_CMDS="git curl wget gcc make python3 pip3 node npm jq rg fdfind batcat fzf tmux nvim zsh btop tree rsync ssh sqlite3 shellcheck aria2c socat lb debootstrap xorriso"
 OPT_CMDS="gh cmake pipx podman docker distrobox adb fastboot scrcpy zoxide exa fish tig shfmt git-lfs"
 
+PATH="$PATH:/usr/sbin:/sbin"; export PATH
 have() { command -v "$1" >/dev/null 2>&1; }
 
 ver() {
@@ -14,6 +15,7 @@ ver() {
         lb)   lb --version 2>&1 | head -n 1 ;;
         pip3) pip3 --version 2>&1 | awk '{print $1" "$2}' ;;
         make) make --version 2>&1 | head -n 1 ;;
+        socat) socat -V 2>&1 | sed -n 2p | sed 's/^ *//' ;;
         *)    timeout 4 "$1" --version 2>&1 | head -n 1 ;;
     esac | cut -c1-58
 }

@@ -1,0 +1,27 @@
+#!/bin/sh
+# Uhuru OS: inahakikisha AppArmor inapakia profiles kila boot, na inaandika ushahidi wa hali halisi kwenye /var/log/uhuru-apparmor.log.
+# Haivunji boot (inatoka na 0 kila wakati).
+LOG=/var/log/uhuru-apparmor.log
+show() { systemctl show apparmor.service -p LoadState -p UnitFileState -p ActiveState -p SubState -p Result -p ConditionResult 2>&1 | tr '\n' ' '; echo; }
+{
+    echo "== uhuru-apparmor-ensure $(date -u +%FT%TZ)"
+    echo "kernel-enabled=$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || echo none)"
+    printf 'kabla: '; show
+    if ! systemctl is-active --quiet apparmor.service; then
+        echo "apparmor.service haikimbii; naiondoa mask (ikiwepo) na kuianzisha"
+        systemctl unmask apparmor.service 2>&1 || true
+        systemctl start apparmor.service 2>&1 || true
+        printf 'baada: '; show
+    fi
+    if ! systemctl is-active --quiet apparmor.service; then
+        echo "huduma bado haikimbii; napakia profiles moja kwa moja"
+        if [ -x /lib/apparmor/apparmor.systemd ]; then
+            /lib/apparmor/apparmor.systemd reload 2>&1 || true
+        elif command -v apparmor_parser >/dev/null 2>&1; then
+            apparmor_parser -r -W /etc/apparmor.d 2>&1 || true
+        fi
+    fi
+    echo "profiles=$(wc -l < /sys/kernel/security/apparmor/profiles 2>/dev/null || echo none)"
+    journalctl -b -u apparmor.service --no-pager -n 15 2>&1 || true
+} >> "$LOG" 2>&1
+exit 0

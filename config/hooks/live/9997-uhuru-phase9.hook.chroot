@@ -30,6 +30,14 @@ if [ -f /lib/systemd/system/apparmor.service ] || [ -f /usr/lib/systemd/system/a
     mkdir -p /etc/systemd/system/sysinit.target.wants
     ln -sf /lib/systemd/system/apparmor.service /etc/systemd/system/sysinit.target.wants/apparmor.service
 fi
+# uhuru-v173: apparmor.service ilikuwa 'inactive' kwenye boot ingawa kernel=Y na kifurushi kipo. Hakikisha haijafichwa, na uhuru-apparmor.service
+# iianzishe/ipakie profiles kila boot (na iandike ushahidi kwenye /var/log/uhuru-apparmor.log).
+systemctl unmask apparmor.service >/dev/null 2>&1 || true
+if [ "$(readlink /etc/systemd/system/apparmor.service 2>/dev/null)" = /dev/null ]; then rm -f /etc/systemd/system/apparmor.service; fi
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/uhuru-apparmor.service /etc/systemd/system/multi-user.target.wants/uhuru-apparmor.service
+chmod 0755 /usr/local/sbin/uhuru-apparmor-ensure
+echo "uhuru-phase9: apparmor unit-state=$(systemctl is-enabled apparmor.service 2>&1 | head -n 1) profiles-dir=$(ls /etc/apparmor.d 2>/dev/null | wc -l)"
 echo "uhuru-phase9: apparmor pkg=$(dpkg-query -W -f='${db:Status-Abbrev}' apparmor 2>/dev/null | tr -d ' ') enabled=$(systemctl is-enabled apparmor 2>&1 | head -n 1)"
 systemctl disable clamav-freshclam.service >/dev/null 2>&1 || true
 systemctl mask cups-browsed.service >/dev/null 2>&1 || true

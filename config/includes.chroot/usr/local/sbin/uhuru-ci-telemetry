@@ -260,7 +260,7 @@ p9check() {
         fi
     fi
     local aadiag
-    aadiag=$( { printf 'k=%s svc=%s pkg=%s cmd=%s' "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || echo none)" "$(timeout -k 1 5 systemctl is-active apparmor 2>&1 | head -n 1)" "$(dpkg-query -W -f='${db:Status-Abbrev}' apparmor 2>/dev/null | tr -d ' ')" "$(grep -o 'apparmor=[^ ]*\|security=[^ ]*' /proc/cmdline 2>/dev/null | tr '\n' ' ')"; } | tr -c 'A-Za-z0-9=_.,+-' ' ' | tr -s ' ' ',' | cut -c1-90)
+    aadiag=$( { printf 'k=%s svc=%s pkg=%s cmd=%s unit=%s prof=%s' "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || echo none)" "$(timeout -k 1 5 systemctl is-active apparmor 2>&1 | head -n 1)" "$(dpkg-query -W -f='${db:Status-Abbrev}' apparmor 2>/dev/null | tr -d ' ')" "$(grep -o 'apparmor=[^ ]*\|security=[^ ]*' /proc/cmdline 2>/dev/null | tr '\n' ' ')" "$(timeout -k 1 5 systemctl show apparmor.service -p LoadState -p UnitFileState -p ActiveState -p ConditionResult 2>/dev/null | tr '\n' ' ')" "$(wc -l < /sys/kernel/security/apparmor/profiles 2>/dev/null || echo none)"; } | tr -c 'A-Za-z0-9=_.,+-' ' ' | tr -s ' ' ',' | cut -c1-230)
     case "$fw|$pr|$us|$sg|$gui" in
         "FW-OK"*"|PROTECT-OK,"*"|USBSCAN-OK"*"|SIGN-OK"*"|SMOKE-OK"*) { [ "${wc:-0}" -ge 1 ] 2>/dev/null && touch /run/uhuru-p9.done; } 2>/dev/null || true ;;
     esac

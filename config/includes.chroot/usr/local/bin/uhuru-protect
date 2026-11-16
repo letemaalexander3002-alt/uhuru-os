@@ -82,6 +82,9 @@ def check_firewall():
 def check_apparmor():
     on = read("/sys/module/apparmor/parameters/enabled") == "Y"
     rc, act = run(["systemctl", "is-active", "apparmor"])
+    prof = [l for l in read("/sys/kernel/security/apparmor/profiles").split("\n") if l.strip()]
+    if on and not act == "active" and prof:
+        return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa: profile %d zimepakiwa kwenye kernel." % len(prof), None)
     if on and act == "active":
         return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa: programu zimefungwa kwenye mipaka yake.", None)
     return ("aa", "AppArmor (kufungia programu)", "bad", "Haijawashwa (kernel=%s, huduma=%s)." % ("ndiyo" if on else "hapana", act or "?"), None)

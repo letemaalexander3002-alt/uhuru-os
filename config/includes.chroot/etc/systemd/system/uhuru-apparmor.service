@@ -1,0 +1,12 @@
+[Unit]
+Description=Uhuru OS: hakikisha AppArmor imewashwa na profiles zimepakiwa
+After=local-fs.target sysinit.target
+ConditionSecurity=apparmor
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/uhuru-apparmor-ensure
+
+[Install]
+WantedBy=multi-user.target
