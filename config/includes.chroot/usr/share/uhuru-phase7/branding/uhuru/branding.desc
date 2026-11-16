@@ -1,0 +1,28 @@
+---
+componentName: uhuru
+
+strings:
+    productName:         Uhuru OS
+    shortProductName:    Uhuru
+    version:             1.0
+    shortVersion:        1.0
+    versionedName:       Uhuru OS 1.0
+    shortVersionedName:  Uhuru 1.0
+    bootloaderEntryName: Uhuru
+    productUrl:          https://letemagrouptech.lsicbusiness.online
+    supportUrl:          https://letemagrouptech.lsicbusiness.online
+    knownIssuesUrl:      https://letemagrouptech.lsicbusiness.online
+    releaseNotesUrl:     https://letemagrouptech.lsicbusiness.online
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+
+slideshow:               "show.qml"
+slideshowAPI:            1
+
+style:
+    sidebarBackground:    "#0b2f36"
+    sidebarText:          "#eaf6f6"
+    sidebarTextSelect:    "#0b2f36"
+    sidebarTextHighlight: "#f5c518"

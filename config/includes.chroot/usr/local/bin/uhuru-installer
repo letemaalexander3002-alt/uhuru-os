@@ -1,0 +1,84 @@
+#!/bin/bash
+# uhuru-installer - sakinisha Uhuru OS kwenye diski (Calamares, chapa ya Uhuru)
+#   uhuru-installer            ukaguzi wa awali kisha kisakinishi
+#   uhuru-installer --check    ukaguzi wa muundo wa kisakinishi (kwa CI; hauanzishi kisakinishi)
+#   uhuru-installer --log      onyesha mahali pa log ya kisakinishi
+CAL=${UHURU_CAL_DIR:-/etc/calamares}
+MODDIRS=${UHURU_CAL_MODDIRS:-"/usr/lib/x86_64-linux-gnu/calamares/modules /usr/lib/calamares/modules"}
+ROOT=${UHURU_ROOT:-}
+have() { command -v "$1" >/dev/null 2>&1; }
+pkg_ok() { dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | grep -q '^ii'; }
+
+cmd_check() {
+    local miss="" brand mods=0 m name found sb=ok crypt=ok fs=ok efi=no md=0 d S="$CAL/settings.conf"
+    for d in $MODDIRS; do [ -d "$d" ] && md=$((md + 1)); done
+    have calamares || [ -n "$UHURU_CAL_DIR" ] || miss="$miss,calamares"
+    if [ ! -f "$S" ]; then
+        miss="$miss,settings.conf"
+    else
+        brand=$(sed -n 's/^branding:[[:space:]]*//p' "$S" | head -n 1 | tr -d "\"' ")
+        [ -n "$brand" ] || miss="$miss,branding-key"
+        for f in branding.desc show.qml logo.png; do
+            [ -f "$CAL/branding/$brand/$f" ] || miss="$miss,branding/$f"
+        done
+        # moduli zilizoorodheshwa kwenye 'sequence:' lazima ziwepo
+        for m in $(awk '/^sequence:/{s=1; next} s && /^[A-Za-z]/{s=0} s' "$S" \
+                   | sed -n 's/^[[:space:]]*-[[:space:]]\{1,\}\([A-Za-z0-9_@-]\{1,\}\)[[:space:]]*\(#.*\)\{0,1\}$/\1/p'); do
+            name=${m%%@*}; mods=$((mods + 1)); found=0
+            for d in $MODDIRS; do [ -d "$d/$name" ] && found=1; done
+            [ "$found" = 1 ] || miss="$miss,module:$name"
+        done
+        [ "$mods" -ge 8 ] || miss="$miss,sequence-ndogo"
+    fi
+    [ -f "$ROOT/usr/lib/shim/shimx64.efi.signed" ] && [ -f "$ROOT/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed" ] || sb=no
+    [ -d "$ROOT/usr/lib/grub/x86_64-efi" ] && [ -d "$ROOT/usr/lib/grub/i386-pc" ] || sb=no
+    [ "$sb" = ok ] || miss="$miss,secureboot-files"
+    [ -f "$ROOT/usr/share/initramfs-tools/hooks/cryptroot" ] && have cryptsetup || crypt=no
+    [ "$crypt" = ok ] || miss="$miss,luks(cryptsetup-initramfs)"
+    for t in mkfs.ext4 mkfs.btrfs mkfs.xfs mkfs.fat; do have "$t" || { fs=no; miss="$miss,$t"; }; done
+    [ -d /sys/firmware/efi ] && efi=yes
+    if [ -z "$miss" ]; then
+        echo "INSTALLER-OK modules=$mods moddirs=$md brand=$brand sb=$sb crypt=$crypt fs=$fs efi=$efi"
+    else
+        echo "INSTALLER-FAIL missing=${miss#,} modules=$mods moddirs=$md"
+        return 1
+    fi
+}
+
+cmd_log() {
+    local f
+    for f in /root/.cache/Calamares/Calamares/Calamares.log "$HOME/.cache/Calamares/Calamares/Calamares.log" /var/log/calamares.log; do
+        [ -f "$f" ] && { echo "$f"; return 0; }
+    done
+    echo "Log ya kisakinishi haijapatikana (haijaendeshwa bado?). Mahali pa kawaida: /root/.cache/Calamares/Calamares/Calamares.log"
+    return 1
+}
+
+cmd_launch() {
+    local ram mode disks live_dev live_disk xa msg
+    ram=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo)
+    mode=BIOS; [ -d /sys/firmware/efi ] && mode=UEFI
+    live_dev=$(findmnt -n -o SOURCE /run/live/medium 2>/dev/null)
+    live_disk=""; [ -n "$live_dev" ] && live_disk=$(lsblk -no PKNAME "$live_dev" 2>/dev/null | head -n 1)
+    disks=$(lsblk -dnb -o NAME,SIZE,TYPE,MODEL 2>/dev/null | awk -v ld="$live_disk" '$3=="disk" && $2>=12000000000 && $1!=ld {printf "%s (%d GB) ", $1, $2/1000000000}')
+    if [ -z "$disks" ]; then
+        zenity --error --width=460 --title="Sakinisha Uhuru OS" \
+            --text="Hakuna diski ya kusakinisha.\n\nUnahitaji diski yenye angalau GB 12 (diski ngumu, SSD, au diski pepe ya VM). Ongeza diski kisha ujaribu tena." 2>/dev/null
+        return 1
+    fi
+    msg="Utasakinisha <b>Uhuru OS</b> kwenye kompyuta hii.\n\nMfumo wa kuwasha: <b>$mode</b>   •   RAM: <b>${ram} MB</b>\nDiski zinazopatikana: <b>$disks</b>\n\n• Unaweza kuchagua <b>usimbaji wa diski</b> (LUKS) kwenye hatua ya diski.\n• Hakikisha una <b>nakala rudufu</b> ya data muhimu; kufuta diski hakurudishwi.\n• Usizime kompyuta wakati wa usakinishaji."
+    [ "$ram" -lt 1500 ] && msg="$msg\n\n<b>Onyo:</b> RAM ni ndogo (chini ya 1.5 GB); usakinishaji unaweza kuwa polepole."
+    zenity --question --width=500 --title="Sakinisha Uhuru OS" --ok-label="Endelea" --cancel-label="Ghairi" --text="$msg" 2>/dev/null || return 0
+    xa=${XAUTHORITY:-$HOME/.Xauthority}
+    if sudo -n true 2>/dev/null; then
+        exec sudo env DISPLAY="$DISPLAY" XAUTHORITY="$xa" /usr/local/sbin/uhuru-installer-run
+    fi
+    exec pkexec env DISPLAY="$DISPLAY" XAUTHORITY="$xa" /usr/local/sbin/uhuru-installer-run
+}
+
+case "${1:-}" in
+    --check) cmd_check ;;
+    --log)   cmd_log ;;
+    "")      cmd_launch ;;
+    *) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

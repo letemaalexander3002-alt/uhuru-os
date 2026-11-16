@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Uhuru Dev: Weka git na SSH
+Name[sw]=Uhuru Dev: Weka git na SSH
+Comment=Jina na barua ya git, SSH key na mapendekezo
+Comment[sw]=Jina na barua ya git, SSH key na mapendekezo
+Exec=bash -c "uhuru-dev setup; echo; read -rp 'Bonyeza Enter kufunga... ' _"
+Icon=preferences-system
+Terminal=true
+Categories=Development;

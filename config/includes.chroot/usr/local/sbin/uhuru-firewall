@@ -1,0 +1,102 @@
+#!/bin/bash
+# uhuru-firewall - ngome ya moto ya Uhuru OS (nftables). Inabana kila kinachoingia isipokuwa majibu ya muunganisho wako.
+#   uhuru-firewall status [--ci]   hali na wasifu wa sasa
+#   uhuru-firewall umma            wasifu mkali (cafe, shule, mtandao wa pamoja)  [chaguo-msingi]
+#   uhuru-firewall nyumbani        ruhusu kompyuta za mtandao wa nyumbani/ofisi (kwa Uhuru Share kupitia LAN)
+#   uhuru-firewall allow <bandari>/<tcp|udp>   fungua bandari moja     (deny: ifunge tena; list: orodha)
+DIR=${UHURU_FW_DIR:-/etc/uhuru-firewall}
+TPL=${UHURU_FW_TPL:-/usr/share/uhuru-firewall}
+NFTCONF=${UHURU_FW_CONF:-/etc/nftables.conf}
+
+die() { echo "uhuru-firewall: $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" = 0 ] || die "inahitaji root (tumia: pkexec uhuru-firewall $*)"; }
+profile() { cat "$DIR/profile" 2>/dev/null || echo none; }
+
+custom_rules() {
+    local proto port
+    [ -f "$DIR/custom-ports.conf" ] || return 0
+    while read -r proto port _; do
+        case "$proto" in tcp|udp) ;; *) continue ;; esac
+        case "$port" in ''|*[!0-9]*) continue ;; esac
+        printf '        %s dport %s accept\n' "$proto" "$port"
+    done < "$DIR/custom-ports.conf"
+}
+
+regen() {   # regen <wasifu>: tengeneza active.nft + nftables.conf (haitumii kwa kernel)
+    local p=$1 rules
+    [ -f "$TPL/$p.tpl" ] || die "wasifu '$p' haupo"
+    mkdir -p "$DIR"
+    rules=$(custom_rules)
+    awk -v r="$rules" '/#CUSTOM#/ { if (r != "") print r; next } { print }' "$TPL/$p.tpl" > "$DIR/active.nft.new" || die "imeshindikana kutengeneza sheria"
+    mv -f "$DIR/active.nft.new" "$DIR/active.nft"
+    echo "$p" > "$DIR/profile"
+    cat > "$NFTCONF" <<NFT
+#!/usr/sbin/nft -f
+# Uhuru OS: inatengenezwa na uhuru-firewall. Wasifu: $p
+table inet uhuru
+delete table inet uhuru
+include "$DIR/active.nft"
+NFT
+}
+
+apply() {
+    command -v nft >/dev/null 2>&1 || die "nft haipo"
+    nft -c -f "$NFTCONF" || die "sheria zina kosa; hazijatumika (ngome ya awali bado inafanya kazi)"
+    nft -f "$NFTCONF" || die "imeshindikana kutumia sheria"
+    systemctl enable nftables >/dev/null 2>&1 || true
+}
+
+cmd_status() {
+    local act pol p
+    act=$(systemctl is-active nftables 2>/dev/null); p=$(profile)
+    pol="n/a"
+    if [ "$(id -u)" = 0 ] && command -v nft >/dev/null 2>&1; then
+        nft list chain inet uhuru input 2>/dev/null | grep -q 'policy drop' && pol=drop || pol=none
+    fi
+    if [ "$1" = "--ci" ]; then
+        if [ "$act" = active ] && { [ "$pol" = drop ] || [ "$pol" = "n/a" ]; } && { [ "$p" = umma ] || [ "$p" = nyumbani ]; }; then
+            echo "FW-OK profile=$p policy=$pol"
+        else
+            echo "FW-FAIL service=${act:-none} profile=$p policy=$pol"; return 1
+        fi
+    else
+        echo "Ngome ya moto: huduma=${act:-haijulikani}  wasifu=$p  sera=$pol"
+        case "$p" in
+            umma)     echo "  Wasifu wa UMMA: hakuna kinachoingia bila ruhusa (salama kwa cafe na mitandao ya pamoja)." ;;
+            nyumbani) echo "  Wasifu wa NYUMBANI: kompyuta za mtandao huo zinaruhusiwa (Uhuru Share kupitia LAN inafanya kazi)." ;;
+        esac
+        [ -s "$DIR/custom-ports.conf" ] && { echo "  Bandari zilizofunguliwa:"; sed 's/^/    /' "$DIR/custom-ports.conf"; }
+    fi
+}
+
+setprofile() { need_root "$1"; regen "$1" && apply && echo "Wasifu wa ngome ya moto: $1"; }
+
+cmd_allow() {
+    local spec=$1 port proto
+    need_root allow "$spec"
+    port=${spec%%/*}; proto=${spec##*/}
+    case "$port" in ''|*[!0-9]*) die "bandari si sahihi: $spec" ;; esac
+    case "$proto" in tcp|udp) ;; *) die "tumia muundo: 8080/tcp" ;; esac
+    mkdir -p "$DIR"
+    grep -qx "$proto $port" "$DIR/custom-ports.conf" 2>/dev/null || echo "$proto $port" >> "$DIR/custom-ports.conf"
+    regen "$(profile | grep -E '^(umma|nyumbani)$' || echo umma)" && apply && echo "Bandari $port/$proto imefunguliwa."
+}
+
+cmd_deny() {
+    local spec=$1 port proto
+    need_root deny "$spec"
+    port=${spec%%/*}; proto=${spec##*/}
+    [ -f "$DIR/custom-ports.conf" ] && sed -i "/^$proto $port\$/d" "$DIR/custom-ports.conf"
+    regen "$(profile | grep -E '^(umma|nyumbani)$' || echo umma)" && apply && echo "Bandari $port/$proto imefungwa."
+}
+
+case "${1:-status}" in
+    status)   cmd_status "$2" ;;
+    umma)     setprofile umma ;;
+    nyumbani) setprofile nyumbani ;;
+    allow)    cmd_allow "$2" ;;
+    deny)     cmd_deny "$2" ;;
+    list)     cat "$DIR/custom-ports.conf" 2>/dev/null ;;
+    regen)    need_root regen; regen "${2:-umma}" ;;
+    *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

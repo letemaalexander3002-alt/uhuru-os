@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chunguza Flash
+Name[sw]=Chunguza Flash
+Comment=Kagua flash zilizounganishwa kwa virus vya shortcut na autorun
+Comment[sw]=Kagua flash zilizounganishwa kwa virus vya shortcut na autorun
+Exec=bash -c "uhuru-usbscan --all; echo; read -rp 'Bonyeza Enter kufunga... ' _"
+Icon=drive-removable-media
+Terminal=true
+Categories=System;Security;

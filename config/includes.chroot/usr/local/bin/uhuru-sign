@@ -1,0 +1,51 @@
+#!/bin/sh
+# uhuru-sign - saini ya kidijitali (ed25519, openssl) ya faili na vifurushi, ili masasisho ya nje ya mtandao yasighushiwe.
+#   uhuru-sign keygen [jina]            tengeneza jozi ya funguo (~/.config/uhuru/sign/<jina>.key na .pub)
+#   uhuru-sign sign <faili> [funguo]    tengeneza <faili>.sig
+#   uhuru-sign verify <faili> [pub]     thibitisha saini (msimbo 0 = sahihi)
+#   uhuru-sign --selftest               jaribio la ndani (CI)
+KD=${UHURU_SIGN_DIR:-$HOME/.config/uhuru/sign}
+
+keygen() {
+    name=${1:-default}
+    mkdir -p "$KD" && chmod 700 "$KD"
+    [ -f "$KD/$name.key" ] && { echo "Funguo '$name' zipo tayari: $KD/$name.key"; return 1; }
+    openssl genpkey -algorithm ed25519 -out "$KD/$name.key" 2>/dev/null && chmod 600 "$KD/$name.key" || return 1
+    openssl pkey -in "$KD/$name.key" -pubout -out "$KD/$name.pub" 2>/dev/null || return 1
+    echo "Funguo zimetengenezwa: $KD/$name.key (siri, usishiriki) na $KD/$name.pub (ya umma, inaweza kusambazwa)"
+}
+sign() {
+    f=$1; key=${2:-$KD/default.key}
+    [ -f "$f" ] && [ -f "$key" ] || { echo "faili au funguo hazipo"; return 1; }
+    t=$(mktemp) || return 1
+    openssl pkeyutl -sign -inkey "$key" -rawin -in "$f" -out "$t" 2>/dev/null || { rm -f "$t"; return 1; }
+    openssl base64 -A -in "$t" > "$f.sig"; rm -f "$t"
+    echo "Saini: $f.sig"
+}
+verify() {
+    f=$1; pub=${2:-$KD/default.pub}
+    [ -f "$f" ] && [ -f "$f.sig" ] && [ -f "$pub" ] || { echo "faili, saini au funguo ya umma hazipo"; return 2; }
+    t=$(mktemp) || return 2
+    openssl base64 -d -A -in "$f.sig" -out "$t" 2>/dev/null
+    if openssl pkeyutl -verify -pubin -inkey "$pub" -rawin -in "$f" -sigfile "$t" >/dev/null 2>&1; then
+        rm -f "$t"; echo "SAINI SAHIHI: $f"; return 0
+    fi
+    rm -f "$t"; echo "SAINI SI SAHIHI: $f"; return 1
+}
+selftest() {
+    T=$(mktemp -d) || return 1
+    KD="$T/k"
+    echo "kifurushi cha majaribio" > "$T/pkg.bin"
+    keygen t >/dev/null && sign "$T/pkg.bin" "$KD/t.key" >/dev/null || { echo "SIGN-FAIL sign"; rm -rf "$T"; return 1; }
+    verify "$T/pkg.bin" "$KD/t.pub" >/dev/null || { echo "SIGN-FAIL verify"; rm -rf "$T"; return 1; }
+    echo "kimeharibiwa" >> "$T/pkg.bin"
+    if verify "$T/pkg.bin" "$KD/t.pub" >/dev/null; then echo "SIGN-FAIL tamper-haikugunduliwa"; rm -rf "$T"; return 1; fi
+    rm -rf "$T"; echo "SIGN-OK ed25519"
+}
+case "$1" in
+    keygen) keygen "$2" ;;
+    sign) sign "$2" "$3" ;;
+    verify) verify "$2" "$3" ;;
+    --selftest) selftest ;;
+    *) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

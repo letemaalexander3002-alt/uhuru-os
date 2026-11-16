@@ -1,0 +1,77 @@
+#!/bin/bash
+# uhuru-workspace - diski ya kudumu ya kazi (label UHURU-WORK), ili kazi, funguo za SSH na mipangilio ya git visipotee
+# kwenye live session. Kazi zako zinaonekana kwenye ~/work.
+#   uhuru-workspace status [--ci]     hali ya diski
+#   uhuru-workspace init <kifaa>      tengeneza diski mpya (ext4) - inafuta data iliyopo
+#   uhuru-workspace mount             unganisha, tengeneza ~/work na viungo vya .ssh, .gitconfig, gh
+LABEL=UHURU-WORK
+DEV="/dev/disk/by-label/$LABEL"
+LINK="$HOME/work"
+ITEMS=".ssh .gitconfig .config/gh .zsh_history .bash_history .config/uhuru/shell .npmrc"
+
+mnt_point() { findmnt -rn -S "LABEL=$LABEL" -o TARGET 2>/dev/null | head -n 1; }
+
+link_home() {
+    local H=$1 it src dst
+    for it in $ITEMS; do
+        src="$HOME/$it"; dst="$H/$it"
+        mkdir -p "$(dirname "$dst")" "$(dirname "$src")"
+        if [ -e "$dst" ]; then
+            [ -L "$src" ] && [ "$(readlink "$src")" = "$dst" ] && continue
+            [ -e "$src" ] && [ ! -L "$src" ] && mv "$src" "$src.uhuru-bak"
+            ln -sfn "$dst" "$src"
+        elif [ -e "$src" ] && [ ! -L "$src" ]; then
+            mv "$src" "$dst" && ln -sfn "$dst" "$src"
+        fi
+    done
+    chmod 700 "$H/.ssh" 2>/dev/null
+    return 0
+}
+
+cmd_status() {
+    local mp
+    if [ ! -e "$DEV" ]; then echo "WS-NONE hakuna-diski-yenye-label-$LABEL"; return 0; fi
+    mp=$(mnt_point)
+    if [ -n "$mp" ]; then echo "WS-MOUNTED $mp"; else echo "WS-FOUND haijaunganishwa"; fi
+}
+
+cmd_mount() {
+    local mp
+    [ -e "$DEV" ] || { echo "Diski yenye label $LABEL haipatikani. Tumia: uhuru-workspace init <kifaa>"; return 1; }
+    mp=$(mnt_point)
+    if [ -z "$mp" ]; then
+        udisksctl mount -b "$(readlink -f "$DEV")" >/dev/null 2>&1
+        mp=$(mnt_point)
+    fi
+    [ -n "$mp" ] || { echo "Imeshindikana kuunganisha diski."; return 1; }
+    if ! mkdir -p "$mp/work" "$mp/.home" 2>/dev/null; then
+        echo "Huna ruhusa kwenye diski. Endesha: sudo chown $USER:$USER \"$mp\""; return 1
+    fi
+    ln -sfn "$mp/work" "$LINK"
+    link_home "$mp/.home"
+    echo "Tayari: ~/work -> $mp/work (funguo na mipangilio vinahifadhiwa kwenye diski hii)"
+}
+
+cmd_init() {
+    local dev=$1 ans mp
+    [ -b "$dev" ] || { echo "Kifaa '$dev' si kifaa cha block. Mfano: uhuru-workspace init /dev/vdb"; return 1; }
+    if findmnt -rn -S "$dev" >/dev/null 2>&1; then echo "Kifaa kimeunganishwa tayari; kitoe kwanza."; return 1; fi
+    if [ -n "$(lsblk -no FSTYPE "$dev" 2>/dev/null | tr -d ' \n')" ]; then
+        echo "ONYO: $dev tayari ina mfumo wa mafaili; data yote itafutwa."
+    fi
+    read -rp "Andika YES kutengeneza diski ya kazi kwenye $dev: " ans
+    [ "$ans" = "YES" ] || { echo "Imeghairiwa."; return 1; }
+    sudo mkfs.ext4 -F -L "$LABEL" -m 0 "$dev" >/dev/null || return 1
+    sleep 1
+    udisksctl mount -b "$dev" >/dev/null 2>&1
+    mp=$(mnt_point)
+    [ -n "$mp" ] && sudo chown "$USER:$USER" "$mp"
+    cmd_mount
+}
+
+case "${1:-status}" in
+    status) cmd_status ;;
+    mount)  cmd_mount ;;
+    init)   cmd_init "$2" ;;
+    *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

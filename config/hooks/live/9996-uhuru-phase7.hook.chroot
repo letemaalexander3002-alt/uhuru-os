@@ -1,0 +1,90 @@
+#!/bin/sh
+# Uhuru OS awamu ya 7: kisakinishi (Calamares) chenye chapa ya Uhuru, usimbaji wa diski (LUKS), Secure Boot, mifumo ya mafaili.
+# Calamares, calamares-settings-debian, grub-efi-amd64-signed, grub-pc-bin, firmware na microcode zilikuwepo tayari; hapa tunaongeza
+# kinachokosekana. Kila kitu ni "soft": kikikosekana kinaishia onyo, na CI (UHURU-P7) inaripoti.
+set -e
+export DEBIAN_FRONTEND=noninteractive
+P7=/usr/share/uhuru-phase7
+CAL=/etc/calamares
+
+# 1. vifurushi vinavyokosekana
+PK="dosfstools e2fsprogs python3-yaml cryptsetup-initramfs lvm2 btrfs-progs xfsprogs shim-signed qml-module-qtquick2 qml-module-qtquick-controls2 gparted timeshift accountsservice libnotify-bin"
+apt-get update -qq >/dev/null 2>&1 || echo "uhuru-phase7: ONYO: apt-get update imeshindwa"
+if ! apt-get install -y --no-install-recommends $PK >/tmp/uhuru-p7.log 2>&1; then
+    echo "uhuru-phase7: ONYO: usakinishaji wa pamoja umeshindwa; najaribu moja moja"
+    for p in $PK; do
+        apt-get install -y --no-install-recommends "$p" >/dev/null 2>&1 || echo "uhuru-phase7: ONYO: $p haikusakinishwa"
+    done
+fi
+dpkg --configure -a >/dev/null 2>&1 || true
+apt-get clean || true
+
+# 2. huduma ya usafi wa mara ya kwanza (mfumo uliosakinishwa tu)
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/uhuru-firstboot.service /etc/systemd/system/multi-user.target.wants/uhuru-firstboot.service
+chmod 0755 /usr/local/sbin/uhuru-firstboot /usr/local/sbin/uhuru-installer-run /usr/local/bin/uhuru-installer
+
+# 3. Calamares: chapa ya Uhuru na mipangilio (kila badiliko linakaguliwa na linarudishwa likiharibu YAML)
+yaml_ok() {
+    python3 - "$1" <<'PY' 2>/dev/null
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)
+yaml.safe_load(open(sys.argv[1]))
+PY
+}
+ykey() {
+    f=$1; k=$2; v=$3
+    [ -n "$(tail -c1 "$f")" ] && echo >> "$f"
+    if grep -q "^$k:" "$f"; then sed -i "s|^$k:.*|$k: $v|" "$f"; else printf '%s: %s\n' "$k" "$v" >> "$f"; fi
+}
+tune_partition() {
+    ykey "$CAL/modules/partition.conf" efiSystemPartitionSize 512MiB
+    ykey "$CAL/modules/partition.conf" enableLuksAutomatedPartitioning true
+    ykey "$CAL/modules/partition.conf" luksGeneration luks1
+}
+guarded() {   # guarded <faili> <amri...>: tekeleza, kagua YAML, rudisha nakala ikiwa imeharibika
+    f=$1; shift
+    cp -p "$f" "$f.uhuru-bak"
+    "$@"
+    if yaml_ok "$f"; then rm -f "$f.uhuru-bak"; else mv -f "$f.uhuru-bak" "$f"; echo "uhuru-phase7: ONYO: $f ilirudishwa (YAML ilikuwa batili)"; fi
+}
+if [ -f "$CAL/settings.conf" ]; then
+    mkdir -p "$CAL/branding/uhuru" "$CAL/modules"
+    cp -a "$P7/branding/uhuru/." "$CAL/branding/uhuru/"
+    if yaml_ok "$CAL/branding/uhuru/branding.desc"; then
+        guarded "$CAL/settings.conf" sed -i 's/^branding:.*/branding: uhuru/' "$CAL/settings.conf"
+    else
+        echo "uhuru-phase7: ONYO: branding.desc ni batili; chapa ya Debian inabaki"
+    fi
+    [ -f "$CAL/modules/welcome.conf" ] && cp -p "$CAL/modules/welcome.conf" "$CAL/modules/welcome.conf.uhuru-bak"
+    cp -f "$P7/modules/welcome.conf" "$CAL/modules/welcome.conf"
+    if yaml_ok "$CAL/modules/welcome.conf"; then rm -f "$CAL/modules/welcome.conf.uhuru-bak"; else
+        [ -f "$CAL/modules/welcome.conf.uhuru-bak" ] && mv -f "$CAL/modules/welcome.conf.uhuru-bak" "$CAL/modules/welcome.conf"
+    fi
+    [ -f "$CAL/modules/partition.conf" ] && guarded "$CAL/modules/partition.conf" tune_partition
+else
+    echo "uhuru-phase7: ONYO: $CAL/settings.conf haipo (calamares-settings-debian haikusakinishwa?)"
+fi
+
+# 4. onyesha kisakinishi cha Uhuru pekee (Debian's zinafichwa) na kiweke kwenye vipendwa vya Start menu
+for f in /usr/share/applications/install-debian.desktop /usr/share/applications/calamares.desktop; do
+    if [ -f "$f" ]; then
+        sed -i '/^NoDisplay=/d' "$f"
+        sed -i '/^\[Desktop Entry\]/a NoDisplay=true' "$f"
+    fi
+done
+rm -f /etc/skel/Desktop/install-debian.desktop
+for rc in /etc/skel/.config/xfce4/panel/whiskermenu-1.rc /etc/xdg/xfce4/panel/whiskermenu-defaults.rc; do
+    if [ -f "$rc" ] && ! grep -q 'uhuru-installer.desktop' "$rc"; then
+        sed -i 's/^favorites=/favorites=uhuru-installer.desktop,/' "$rc"
+    fi
+done
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi
+
+# 5. uthibitisho wa ujenzi (hautavunja build; CI inaripoti tena ndani ya ISO)
+/usr/local/bin/uhuru-installer --check || echo "uhuru-phase7: ONYO: ukaguzi wa kisakinishi umeshindwa (angalia mistari ya ONYO hapo juu)"
+echo "uhuru-phase7: kisakinishi cha Uhuru kimewekwa"
+exit 0

@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""uhuru-usbscan - Uhuru Flash Safe: ukaguzi na usafi wa flash/diski za nje (virus vya "shortcut", autorun, faili za kujificha).
+
+  uhuru-usbscan <folda>           ripoti ya Kiswahili            --json  ripoti kwa mashine    --count  idadi ya hatari
+  uhuru-usbscan <folda> --clean   hamisha faili hatari kwenye ~/Uhuru-Quarantine na ufunue folda zilizofichwa
+  uhuru-usbscan <folda> --deep    pia tumia ClamAV (ikiwa hifadhidata ya virusi ipo)
+  uhuru-usbscan --all             kagua flash zote zilizounganishwa
+  uhuru-usbscan --update          sasisha hifadhidata ya ClamAV (inahitaji mtandao)
+  uhuru-usbscan --selftest        jaribio la ndani (CI)
+"""
+import array
+import fcntl
+import glob
+import json
+import os
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+
+SCRIPT_EXT = {".scr", ".vbs", ".vbe", ".wsf", ".pif", ".hta", ".cmd", ".bat", ".com"}
+DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".jpg", ".jpeg", ".png", ".gif",
+           ".txt", ".mp3", ".mp4", ".mkv", ".zip", ".rar", ".odt", ".ods"}
+LNK_BAD = [b"cmd.exe", b"wscript", b"cscript", b"powershell", b"rundll32", b"mshta", b"regsvr32",
+           b".vbs", b".vbe", b".bat", b".cmd", b".js"]
+MAX_FILES = 20000
+FAT_GET = 0x80047210
+FAT_SET = 0x40047211
+HIDDEN_BITS = 0x06  # hidden | system
+
+
+def _fat_attrs(path):
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        buf = array.array("I", [0])
+        fcntl.ioctl(fd, FAT_GET, buf, True)
+        return buf[0]
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+
+
+def _fat_unhide(path):
+    attrs = _fat_attrs(path)
+    if attrs is None or not (attrs & HIDDEN_BITS):
+        return False
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            fcntl.ioctl(fd, FAT_SET, struct.pack("I", attrs & ~HIDDEN_BITS))
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False
+
+
+def _lnk_suspicious(path):
+    try:
+        if os.path.getsize(path) > 20000:
+            return False
+        with open(path, "rb") as fh:
+            data = fh.read(20000).lower()
+    except OSError:
+        return False
+    return any(pat in data for pat in LNK_BAD)
+
+
+def scan(root):
+    """Inarudisha orodha ya matokeo: dict(path, rel, kind, severity, reason)."""
+    root = os.path.abspath(root)
+    found = []
+
+    def add(path, kind, sev, reason):
+        found.append({"path": path, "rel": os.path.relpath(path, root), "kind": kind, "severity": sev, "reason": reason})
+
+    try:
+        top = sorted(os.scandir(root), key=lambda e: e.name.lower())
+    except OSError:
+        return found
+    names = {e.name.lower() for e in top}
+    dirs = {e.name.lower() for e in top if e.is_dir(follow_symlinks=False)}
+    for e in top:
+        n, low = e.name, e.name.lower()
+        base, ext = os.path.splitext(low)
+        if e.is_dir(follow_symlinks=False):
+            a = _fat_attrs(e.path)
+            if a is not None and a & HIDDEN_BITS:
+                add(e.path, "folda-imefichwa", "medium", "Folda '%s' imefichwa (virus vya shortcut hufanya hivi ili uone njia-mkato za uongo tu)." % n)
+            continue
+        if ext == ".lnk":
+            if base in dirs or (base in names and base != low):
+                add(e.path, "shortcut-ya-uongo", "high", "Njia-mkato '%s' inaiga folda/faili yenye jina lile lile (dalili ya virus vya shortcut)." % n)
+            elif _lnk_suspicious(e.path):
+                add(e.path, "shortcut-hatari", "high", "Njia-mkato '%s' inaendesha amri za Windows (cmd/wscript/powershell)." % n)
+        elif low == "autorun.inf":
+            add(e.path, "autorun", "medium", "autorun.inf: faili ya kuanzisha programu kiotomatiki kwenye Windows.")
+        elif ext in SCRIPT_EXT:
+            add(e.path, "script-hatari", "high", "Faili ya script ya Windows '%s' kwenye mzizi wa flash." % n)
+        elif ext in (".exe",):
+            inner = os.path.splitext(base)[1]
+            if base in dirs:
+                add(e.path, "exe-inaiga-folda", "high", "Programu '%s' ina jina la folda '%s' (hila ya kuonekana kama folda)." % (n, base))
+            elif inner in DOC_EXT:
+                add(e.path, "jina-mbili", "high", "'%s' inajifanya kuwa hati lakini ni programu (viendelezi viwili)." % n)
+            else:
+                add(e.path, "exe", "low", "Programu '%s' kwenye mzizi wa flash (angalia kama unaitambua)." % n)
+    # kina cha pili: viendelezi viwili na script ndani ya folda
+    count = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        depth = os.path.relpath(dirpath, root).count(os.sep) + (0 if dirpath == root else 1)
+        if depth >= 3:
+            dirnames[:] = []
+        if dirpath == root:
+            continue
+        for fn in filenames:
+            count += 1
+            if count > MAX_FILES:
+                return found
+            low = fn.lower()
+            base, ext = os.path.splitext(low)
+            p = os.path.join(dirpath, fn)
+            if ext in (".exe", ".scr", ".vbs", ".pif", ".bat", ".cmd") and os.path.splitext(base)[1] in DOC_EXT:
+                add(p, "jina-mbili", "high", "'%s' inajifanya kuwa hati lakini ni programu (viendelezi viwili)." % fn)
+            elif ext == ".lnk" and _lnk_suspicious(p):
+                add(p, "shortcut-hatari", "high", "Njia-mkato '%s' inaendesha amri za Windows." % fn)
+            elif low == "autorun.inf":
+                add(p, "autorun", "medium", "autorun.inf ndani ya folda.")
+    return found
+
+
+def threats(found):
+    return [f for f in found if f["severity"] in ("high", "medium")]
+
+
+def clean(root, found, qroot=None):
+    """Hamisha faili hatari kwenye karantini (hazifutwi) na ufunue folda zilizofichwa."""
+    label = os.path.basename(os.path.abspath(root)) or "flash"
+    qdir = os.path.join(qroot or os.path.join(os.path.expanduser("~"), "Uhuru-Quarantine"),
+                        "%s-%s" % (label, time.strftime("%Y%m%d-%H%M%S")))
+    moved, unhidden, failed = [], [], []
+    for f in found:
+        if f["severity"] == "low":
+            continue
+        if f["kind"] == "folda-imefichwa":
+            (unhidden if _fat_unhide(f["path"]) else failed).append(f["rel"])
+            continue
+        if not os.path.exists(f["path"]):
+            continue
+        dest = os.path.join(qdir, f["rel"])
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(f["path"], dest)
+            moved.append(f["rel"])
+        except OSError:
+            failed.append(f["rel"])
+    return {"quarantine": qdir if moved else "", "moved": moved, "unhidden": unhidden, "failed": failed}
+
+
+def clam_db():
+    for pat in ("/var/lib/clamav/main.c[vl]d", "/var/lib/clamav/daily.c[vl]d"):
+        if glob.glob(pat):
+            return True
+    return False
+
+
+def deep_scan(root):
+    exe = shutil.which("clamscan")
+    if not exe or not clam_db():
+        return None
+    try:
+        out = subprocess.run([exe, "-r", "--infected", "--no-summary", "--max-filesize=50M", root],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=900).stdout
+    except Exception:
+        return None
+    return [ln for ln in out.splitlines() if ln.strip().endswith("FOUND")]
+
+
+def mounts():
+    user = os.environ.get("USER") or os.path.basename(os.path.expanduser("~"))
+    res = []
+    for base in ("/run/media/%s" % user, "/media/%s" % user):
+        res += [d for d in sorted(glob.glob(base + "/*")) if os.path.isdir(d)]
+    return res
+
+
+def report(root, found, extra=None):
+    th = threats(found)
+    print("Flash: %s" % root)
+    if not found:
+        print("  Safi: hakuna dalili za virus vya shortcut, autorun wala faili zinazotia shaka.")
+    for f in found:
+        mark = {"high": "HATARI ", "medium": "SHAKA  ", "low": "angalia"}[f["severity"]]
+        print("  [%s] %s\n            %s" % (mark, f["rel"], f["reason"]))
+    if extra:
+        for ln in extra:
+            print("  [ClamAV] " + ln)
+    if th:
+        print("\n  Faili %d zinatia shaka. Safisha kwa: uhuru-usbscan \"%s\" --clean" % (len(th), root))
+
+
+def selftest():
+    tmp = tempfile.mkdtemp(prefix="uhuru-usb-")
+    try:
+        usb = os.path.join(tmp, "FLASH")
+        os.makedirs(os.path.join(usb, "Picha"))
+        os.makedirs(os.path.join(usb, "Kazi", "2026"))
+        open(os.path.join(usb, "Picha", "safi.jpg"), "wb").write(b"jpg")
+        open(os.path.join(usb, "Kazi", "2026", "ripoti.pdf.exe"), "wb").write(b"MZ")
+        open(os.path.join(usb, "Picha.lnk"), "wb").write(b"L\x00\x00\x00 cmd.exe /c start Picha.exe")
+        open(os.path.join(usb, "Picha.exe"), "wb").write(b"MZ")
+        open(os.path.join(usb, "autorun.inf"), "w").write("[autorun]\nopen=Picha.exe\n")
+        open(os.path.join(usb, "run.vbs"), "w").write("WScript.Echo 1")
+        open(os.path.join(usb, "kitabu.txt"), "w").write("safi")
+        found = scan(usb)
+        kinds = sorted({f["kind"] for f in found})
+        need = {"shortcut-ya-uongo", "exe-inaiga-folda", "autorun", "script-hatari", "jina-mbili"}
+        if not need.issubset(set(kinds)):
+            print("USBSCAN-FAIL kinds=%s" % ",".join(kinds))
+            return 1
+        if any(f["rel"] in ("kitabu.txt", os.path.join("Picha", "safi.jpg")) for f in found):
+            print("USBSCAN-FAIL false-positive")
+            return 1
+        res = clean(usb, found, qroot=os.path.join(tmp, "Q"))
+        left = [n for n in ("Picha.lnk", "Picha.exe", "autorun.inf", "run.vbs") if os.path.exists(os.path.join(usb, n))]
+        safe = os.path.exists(os.path.join(usb, "kitabu.txt")) and os.path.exists(os.path.join(usb, "Picha", "safi.jpg"))
+        if left or not safe or len(res["moved"]) < 5 or not os.path.isdir(res["quarantine"]):
+            print("USBSCAN-FAIL clean left=%s safe=%s moved=%d" % (",".join(left), safe, len(res["moved"])))
+            return 1
+        if threats(scan(usb)):
+            print("USBSCAN-FAIL baada-ya-usafi")
+            return 1
+        print("USBSCAN-OK detected=%d cleaned=%d" % (len(threats(found)), len(res["moved"])))
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def main(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    flags = {a for a in argv if a.startswith("--")}
+    if "--selftest" in flags:
+        return selftest()
+    if "--update" in flags:
+        exe = shutil.which("freshclam")
+        if not exe:
+            print("freshclam haipo (sakinisha clamav-freshclam).")
+            return 1
+        cmd = [exe] if os.geteuid() == 0 else ["pkexec", exe]
+        return subprocess.call(cmd)
+    if "--all" in flags:
+        ms = mounts()
+        if not ms:
+            print("Hakuna flash iliyounganishwa (/run/media/%s)." % (os.environ.get("USER", "?")))
+            return 0
+        for m in ms:
+            report(m, scan(m))
+            print()
+        return 0
+    if not args:
+        print(__doc__)
+        return 2
+    root = args[0]
+    if not os.path.isdir(root):
+        print("Folda '%s' haipo." % root)
+        return 2
+    found = scan(root)
+    if "--count" in flags:
+        print(len(threats(found)))
+        return 0
+    extra = deep_scan(root) if "--deep" in flags else None
+    if "--json" in flags:
+        print(json.dumps({"root": root, "findings": found, "clam": extra}, ensure_ascii=False))
+        return 0
+    report(root, found, extra)
+    if "--clean" in flags:
+        res = clean(root, found)
+        print("\nImehamishwa: %d  |  Imefunuliwa: %d  |  Imeshindikana: %d" % (len(res["moved"]), len(res["unhidden"]), len(res["failed"])))
+        if res["quarantine"]:
+            print("Karantini: %s (faili hazijafutwa; unaweza kuzikagua au kuzifuta mwenyewe)" % res["quarantine"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

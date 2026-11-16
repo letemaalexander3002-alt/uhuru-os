@@ -157,6 +157,9 @@ e2e() {
         key meta_l; sleep 4; shot 18-start-menu; key esc; sleep 2
         typestr "uhuru-store"; key ret; sleep 12; shot 19-lgt-store
         key meta_l; sleep 3; typestr "Uhuru Share"; sleep 3; shot 20-start-menu-share; key ret; sleep 8; shot 21-uhuru-share
+        key ctrl-alt-t; sleep 6; typestr "uhuru-dev doctor"; key ret; sleep 10; shot 22-dev-doctor
+        typestr "uhuru-installer"; key ret; sleep 6; shot 23-installer-preflight; key esc; sleep 2
+        typestr "uhuru-protect"; key ret; sleep 8; shot 24-kituo-cha-ulinzi
         sleep 100
     fi
     return 0

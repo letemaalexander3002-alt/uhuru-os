@@ -120,6 +120,48 @@ else
     fi
     echo "CHECK INFO: e2e: awamu ya 6: katalogi ya mbali kutoka GitHub ($(printf '%s\n' "$P6" | grep -o 'sync=[^ ]*' | tail -n 1)); SYNC-OK = repo ni ya umma na inasomeka, http_404 = repo ni private au faili halipo"
 fi
+# ---- Awamu ya 7: kisakinishi (Calamares), Secure Boot, LUKS (v17.1) ----
+P7=$(slogc | grep '^UHURU-P7 ' | tail -n 40)
+P7LAST=$(printf '%s\n' "$P7" | tail -n 1)
+p7() { printf '%s\n' "$P7" | grep -Eq "$1"; }
+if [ -z "$P7" ]; then
+    fail "awamu ya 7: hakuna ripoti ya UHURU-P7 (uhuru-installer au telemetry haikufanya kazi)"
+else
+    if p7 'inst=INSTALLER-OK'; then echo "CHECK PASS: e2e: awamu ya 7: kisakinishi cha Uhuru kina muundo kamili (chapa, moduli zote, Secure Boot, LUKS, ext4/btrfs/xfs/fat)"; else fail "awamu ya 7: muundo wa kisakinishi una upungufu ($(printf '%s\n' "$P7" | grep -o 'inst=[^ ]*' | sort -u | tail -n 1))"; fi
+    if p7 'pkgmiss=none'; then echo "CHECK PASS: e2e: awamu ya 7: vifurushi vya usakinishaji vipo (calamares, cryptsetup-initramfs, shim-signed, lvm2, btrfs, xfs, grub signed)"; else fail "awamu ya 7: vifurushi vinakosekana: $(printf '%s\n' "$P7" | grep -o 'pkgmiss=[^ ]*' | sort -u | tail -n 1)"; fi
+    if p7 'fb=ok acct=ok'; then echo "CHECK PASS: e2e: awamu ya 7: usafi wa mara ya kwanza na orodha ya watumiaji (mfumo uliosakinishwa) vimewekwa"; else fail "awamu ya 7: firstboot/accountsservice si sawa ($P7LAST)"; fi
+    echo "CHECK INFO: e2e: awamu ya 7: $(printf '%s\n' "$P7" | grep -o 'inst=[^ ]*' | tail -n 1) $(printf '%s\n' "$P7" | grep -o 'ts=[^ ]*' | tail -n 1)  (efi=no ni kawaida kwa QEMU ya BIOS ya CI)"
+fi
+# ---- Awamu ya 8: Uhuru Dev Edition (v17.0) ----
+P8=$(slogc | grep '^UHURU-P8 ' | tail -n 40)
+P8LAST=$(printf '%s\n' "$P8" | tail -n 1)
+p8() { printf '%s\n' "$P8" | grep -Eq "$1"; }
+if [ -z "$P8" ]; then
+    fail "awamu ya 8: hakuna ripoti ya UHURU-P8 (uhuru-dev au telemetry haikufanya kazi)"
+else
+    if p8 'cfg=ok'; then echo "CHECK PASS: e2e: awamu ya 8: .zshrc, tmux, neovim na Uhuru Terminal (uhuru-shell) zimewekwa kwenye /etc/skel"; else fail "awamu ya 8: mipangilio ya shell/terminali haijakamilika ($P8LAST)"; fi
+    if p8 'dev=DEV-OK'; then echo "CHECK PASS: e2e: awamu ya 8: zana zote za msingi za ujenzi zipo (git, gcc, node, python, live-build, n.k.)"; else fail "awamu ya 8: zana za msingi zinakosekana ($(printf '%s\n' "$P8" | grep -o 'coremissing=[^ ]*' | tail -n 1))"; fi
+    if p8 'zsh=ZSH-OK,[0-9.]+,sug=1,hl=1,mkcd=1'; then echo "CHECK PASS: e2e: awamu ya 8: zsh inapakia .zshrc kwenye session ya mtumiaji (mapendekezo, rangi za syntax, aliases)"; else fail "awamu ya 8: zsh haipakii vizuri ($(printf '%s\n' "$P8" | grep -o 'zsh=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p8 'bash=BASH-OK' && p8 'shell=zsh'; then echo "CHECK PASS: e2e: awamu ya 8: bash bado inafanya kazi na Uhuru Terminal inachagua zsh"; else fail "awamu ya 8: bash au uhuru-shell ina tatizo ($P8LAST)"; fi
+    OM=$(printf '%s\n' "$P8" | grep -o 'optmissing=[^ ]*' | tail -n 1)
+    echo "CHECK INFO: e2e: awamu ya 8: zana za ziada zisizopatikana: ${OM#optmissing=}"
+fi
+# ---- Awamu ya 9: ulinzi (v17.1) ----
+P9=$(slogc | grep '^UHURU-P9 ' | tail -n 40)
+P9LAST=$(printf '%s\n' "$P9" | tail -n 1)
+p9() { printf '%s\n' "$P9" | grep -Eq "$1"; }
+if [ -z "$P9" ]; then
+    fail "awamu ya 9: hakuna ripoti ya UHURU-P9 (uhuru-protect au telemetry haikufanya kazi)"
+else
+    if p9 'fw=FW-OK'; then echo "CHECK PASS: e2e: awamu ya 9: ngome ya moto (nftables) inafanya kazi: kila kinachoingia kinabanwa ($(printf '%s\n' "$P9" | grep -o 'fw=[^ ]*' | tail -n 1))"; else fail "awamu ya 9: ngome ya moto haifanyi kazi ($(printf '%s\n' "$P9" | grep -o 'fw=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p9 'protect=PROTECT-OK,.*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi hakioni kipengele chochote chenye hatari"; else fail "awamu ya 9: Kituo cha Ulinzi kimeona hatari ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
+    if p9 'protect=PROTECT-OK,.*fw=ok,aa=ok,sysctl=ok,upd=ok'; then echo "CHECK PASS: e2e: awamu ya 9: AppArmor, kernel iliyoimarishwa na sasisho za usalama vimewekwa"; else fail "awamu ya 9: AppArmor/kernel/sasisho si sawa ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
+    if p9 'usb=USBSCAN-OK'; then echo "CHECK PASS: e2e: awamu ya 9: Flash Safe inatambua virus vya shortcut/autorun, haikosei faili safi, na inasafisha kwa karantini"; else fail "awamu ya 9: Flash Safe selftest imeshindwa ($(printf '%s\n' "$P9" | grep -o 'usb=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p9 'watch=[1-9]'; then echo "CHECK PASS: e2e: awamu ya 9: mlinzi wa flash (uhuru-usbwatch) anakimbia kwenye session ya mtumiaji"; else fail "awamu ya 9: mlinzi wa flash hakimbii kwenye session ($P9LAST)"; fi
+    if p9 'sign=SIGN-OK'; then echo "CHECK PASS: e2e: awamu ya 9: saini za kidijitali (ed25519) zinafanya kazi, na mabadiliko ya faili yanagunduliwa"; else fail "awamu ya 9: uhuru-sign imeshindwa ($(printf '%s\n' "$P9" | grep -o 'sign=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    if p9 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 9: dirisha la Kituo cha Ulinzi linajengwa ndani ya session"; else fail "awamu ya 9: Kituo cha Ulinzi hakifunguki ndani ya session ($(printf '%s\n' "$P9" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
+    echo "CHECK INFO: e2e: awamu ya 9: $(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | tail -n 1)"
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0

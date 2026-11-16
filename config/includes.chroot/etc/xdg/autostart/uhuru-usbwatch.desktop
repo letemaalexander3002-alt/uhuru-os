@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Uhuru Flash Safe
+Exec=/usr/local/bin/uhuru-usbwatch
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

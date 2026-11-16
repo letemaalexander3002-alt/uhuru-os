@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Kituo cha Ulinzi cha Uhuru OS - hali ya usalama ya kompyuta kwa muhtasari (Kiswahili).
+
+  uhuru-protect           fungua Kituo cha Ulinzi
+  uhuru-protect --check   hali ya kila kipengele kwa mstari mmoja (kwa CI; msimbo 0 = hakuna 'bad')
+  uhuru-protect --smoke   jenga dirisha bila kulionyesha (kwa CI)
+"""
+import glob
+import os
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+ROOT = os.environ.get("UHURU_PROTECT_ROOT", "")
+APPLIANCE_ICON = "/usr/share/uhuru-store/icons/uhuru-store.svg"
+
+CSS = """
+window.lgt-protect { background: #f3f7f7; }
+headerbar.lgt-header { background: #0b3b44; color: #ffffff; border: none; box-shadow: none; }
+headerbar.lgt-header .title { color: #ffffff; font-weight: 700; }
+headerbar.lgt-header .subtitle { color: #f5c518; font-size: 9pt; }
+.lgt-banner-ok { background-image: linear-gradient(to right, #0b6b4a, #12a37a); border-radius: 18px; padding: 22px 26px; }
+.lgt-banner-warn { background-image: linear-gradient(to right, #8a5a00, #d19a00); border-radius: 18px; padding: 22px 26px; }
+.lgt-banner-bad { background-image: linear-gradient(to right, #8b1a1a, #d33a2c); border-radius: 18px; padding: 22px 26px; }
+.lgt-banner-title { color: #ffffff; font-weight: 800; font-size: 20pt; }
+.lgt-banner-sub { color: #ffffff; font-size: 10.5pt; }
+.lgt-row { background: #ffffff; border-radius: 14px; padding: 12px 16px; border: 1px solid #dfe9e9; }
+.lgt-row-title { color: #0b2f36; font-weight: 700; font-size: 11.5pt; }
+.lgt-row-detail { color: #587274; font-size: 9.5pt; }
+.lgt-dot-ok { color: #12a37a; font-size: 20pt; }
+.lgt-dot-warn { color: #d19a00; font-size: 20pt; }
+.lgt-dot-bad { color: #d33a2c; font-size: 20pt; }
+.lgt-dot-info { color: #7d9496; font-size: 20pt; }
+button.lgt-act { background: #f5c518; color: #0b2f36; border-radius: 999px; padding: 4px 16px; font-weight: 800; border: none; box-shadow: none; }
+button.lgt-act:hover { background: #ffd43b; }
+"""
+
+
+def p(path):
+    return ROOT + path
+
+
+def run(argv, timeout=6):
+    try:
+        r = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, timeout=timeout)
+        return r.returncode, r.stdout.strip()
+    except Exception:
+        return 127, ""
+
+
+def read(path, default=""):
+    try:
+        with open(p(path), "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return default
+
+
+def pkg_installed(name):
+    rc, out = run(["dpkg-query", "-W", "-f", "${db:Status-Abbrev}", name])
+    return rc == 0 and out.startswith("ii")
+
+
+def is_live():
+    return "boot=live" in read("/proc/cmdline")
+
+
+# ---- vipengele: kila kimoja kinarudisha (id, kichwa, hali, maelezo, kitendo|None) ; hali: ok | warn | info | bad
+def check_firewall():
+    prof = read("/etc/uhuru-firewall/profile", "none")
+    rc, act = run(["systemctl", "is-active", "nftables"])
+    if act == "active" and prof in ("umma", "nyumbani"):
+        if prof == "umma":
+            return ("fw", "Ngome ya moto", "ok", "Imewashwa - wasifu wa UMMA: hakuna kinachoingia bila ruhusa.", ("Badili kuwa NYUMBANI", "nyumbani"))
+        return ("fw", "Ngome ya moto", "ok", "Imewashwa - wasifu wa NYUMBANI: kompyuta za mtandao huo zinaruhusiwa (Uhuru Share kwa LAN).", ("Badili kuwa UMMA", "umma"))
+    return ("fw", "Ngome ya moto", "bad", "Haifanyi kazi (huduma=%s, wasifu=%s)." % (act or "?", prof), ("Washa (UMMA)", "umma"))
+
+
+def check_apparmor():
+    on = read("/sys/module/apparmor/parameters/enabled") == "Y"
+    rc, act = run(["systemctl", "is-active", "apparmor"])
+    if on and act == "active":
+        return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa: programu zimefungwa kwenye mipaka yake.", None)
+    return ("aa", "AppArmor (kufungia programu)", "bad", "Haijawashwa (kernel=%s, huduma=%s)." % ("ndiyo" if on else "hapana", act or "?"), None)
+
+
+def check_sysctl():
+    want = {"/proc/sys/kernel/kptr_restrict": "2", "/proc/sys/kernel/dmesg_restrict": "1",
+            "/proc/sys/net/ipv4/tcp_syncookies": "1", "/proc/sys/fs/protected_symlinks": "1",
+            "/proc/sys/net/ipv4/conf/all/rp_filter": "1"}
+    bad = [os.path.basename(k) for k, v in want.items() if read(k) != v]
+    if not bad:
+        return ("sysctl", "Kernel iliyoimarishwa", "ok", "Siri za kernel zimefichwa; mtandao unalindwa dhidi ya mashambulizi ya kawaida.", None)
+    return ("sysctl", "Kernel iliyoimarishwa", "bad", "Mipangilio haijatumika: %s" % ", ".join(bad), None)
+
+
+def check_updates():
+    ok = pkg_installed("unattended-upgrades") and os.path.isfile(p("/etc/apt/apt.conf.d/52uhuru-security-updates"))
+    if not ok:
+        return ("upd", "Sasisho za usalama", "bad", "Sasisho za kiotomatiki hazijawekwa.", None)
+    if is_live():
+        return ("upd", "Sasisho za usalama", "ok", "Zimewekwa; zinaanza kufanya kazi kwenye mfumo uliosakinishwa (si kwenye live).", None)
+    stamp = p("/var/lib/apt/periodic/unattended-upgrades-stamp")
+    if os.path.isfile(stamp):
+        days = int((time.time() - os.path.getmtime(stamp)) / 86400)
+        return ("upd", "Sasisho za usalama", "ok" if days <= 14 else "warn", "Mara ya mwisho: siku %d zilizopita." % days, None)
+    return ("upd", "Sasisho za usalama", "warn", "Zimewashwa; hazijawahi kuendeshwa bado (zinahitaji mtandao).", None)
+
+
+def check_disk():
+    if is_live():
+        return ("disk", "Usimbaji wa diski", "info", "Live session: hakuna kinachohifadhiwa. Usimbaji (LUKS) unachaguliwa wakati wa kusakinisha.", None)
+    rc, out = run(["lsblk", "-rno", "TYPE"])
+    if "crypt" in out.split():
+        return ("disk", "Usimbaji wa diski", "ok", "Diski imesimbwa (LUKS): data haisomeki ikiibiwa kompyuta.", None)
+    return ("disk", "Usimbaji wa diski", "warn", "Diski HAIJASIMBWA. Ikiibiwa kompyuta, data inasomeka. Sakinisha upya ukichagua usimbaji.", None)
+
+
+def check_secureboot():
+    if not os.path.isdir(p("/sys/firmware/efi")):
+        return ("sb", "Secure Boot", "info", "Kompyuta hii imewashwa kwa BIOS (si UEFI); Secure Boot haitumiki.", None)
+    rc, out = run(["mokutil", "--sb-state"])
+    if "enabled" in out.lower():
+        return ("sb", "Secure Boot", "ok", "Imewashwa: programu za kuwasha zimethibitishwa.", None)
+    return ("sb", "Secure Boot", "info", "UEFI ipo lakini Secure Boot imezimwa (unaweza kuiwasha kwenye mipangilio ya BIOS).", None)
+
+
+def check_flash():
+    if not os.path.isfile(p("/etc/xdg/autostart/uhuru-usbwatch.desktop")):
+        return ("usb", "Ulinzi wa flash", "bad", "Mlinzi wa flash hajawekwa.", None)
+    rc, out = run(["pgrep", "-fc", "[u]huru-usbwatch"])
+    detail = "Kila flash inayounganishwa inakaguliwa kwa virus vya shortcut na autorun."
+    return ("usb", "Ulinzi wa flash", "ok", detail, ("Kagua flash sasa", "scan"))
+
+
+def check_av():
+    db = sorted(glob.glob(p("/var/lib/clamav/main.c[vl]d")) + glob.glob(p("/var/lib/clamav/daily.c[vl]d")))
+    if not shutil.which("clamscan") and not os.path.exists(p("/usr/bin/clamscan")):
+        return ("av", "Antivirus (ClamAV)", "warn", "ClamAV haijasakinishwa.", None)
+    if not db:
+        return ("av", "Antivirus (ClamAV)", "warn", "Hifadhidata ya virusi haijapakuliwa (inahitaji mtandao mara moja).", ("Sasisha sasa", "avupdate"))
+    days = int((time.time() - max(os.path.getmtime(f) for f in db)) / 86400)
+    if days > 14:
+        return ("av", "Antivirus (ClamAV)", "warn", "Hifadhidata ina siku %d; sasisha." % days, ("Sasisha sasa", "avupdate"))
+    return ("av", "Antivirus (ClamAV)", "ok", "Hifadhidata ni mpya (siku %d)." % days, None)
+
+
+def check_privacy():
+    if os.path.isfile(p("/etc/NetworkManager/conf.d/90-uhuru-privacy.conf")):
+        return ("nm", "Faragha ya mtandao", "ok", "MAC ya Wi-Fi haifuatiliki; anwani za IPv6 za muda zinatumika.", None)
+    return ("nm", "Faragha ya mtandao", "bad", "Mipangilio ya faragha haijawekwa.", None)
+
+
+CHECKS = [check_firewall, check_apparmor, check_sysctl, check_updates, check_disk, check_secureboot,
+          check_flash, check_av, check_privacy]
+
+
+def collect():
+    out = []
+    for fn in CHECKS:
+        try:
+            out.append(fn())
+        except Exception as exc:  # kipengele kimoja kisiangushe kituo kizima
+            out.append((fn.__name__, fn.__name__, "bad", "Hitilafu: %s" % exc, None))
+    return out
+
+
+def summary(items):
+    cnt = {"ok": 0, "warn": 0, "info": 0, "bad": 0}
+    for it in items:
+        cnt[it[2]] += 1
+    return cnt
+
+
+def cmd_check():
+    items = collect()
+    cnt = summary(items)
+    toks = ",".join("%s=%s" % (it[0], it[2]) for it in items)
+    head = "PROTECT-OK" if cnt["bad"] == 0 else "PROTECT-FAIL"
+    print("%s n=%d ok=%d warn=%d info=%d bad=%d %s" % (head, len(items), cnt["ok"], cnt["warn"], cnt["info"], cnt["bad"], toks))
+    return 0 if cnt["bad"] == 0 else 1
+
+
+def priv(argv):
+    return argv if os.geteuid() == 0 else ["pkexec"] + argv
+
+
+def do_action(code):
+    if code in ("umma", "nyumbani"):
+        return subprocess.call(priv(["/usr/local/sbin/uhuru-firewall", code]))
+    if code == "avupdate":
+        return subprocess.call(priv(["freshclam"]))
+    if code == "scan":
+        subprocess.Popen(["xfce4-terminal", "--hold", "-T", "Uhuru Flash Safe", "-e", "uhuru-usbscan --all"])
+        return 0
+    return 1
+
+
+def main(argv):
+    if "--check" in argv:
+        return cmd_check()
+    smoke = "--smoke" in argv
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        gi.require_version("Gdk", "3.0")
+        from gi.repository import Gtk, Gdk, GLib, Pango
+    except Exception as exc:
+        print("SMOKE-FAIL import %s" % str(exc).replace(" ", "_")[:60])
+        return 1
+    if Gdk.Display.get_default() is None:
+        print("SMOKE-FAIL no-display" if smoke else "uhuru-protect: hakuna skrini (DISPLAY)")
+        return 1
+    GLib.set_prgname("uhuru-protect")
+    GLib.set_application_name("Kituo cha Ulinzi")
+    try:
+        win = build_window(Gtk, Gdk, GLib, Pango)
+        if smoke:
+            win.get_child().show_all()
+            win.realize()
+            for _ in range(60):
+                if not Gtk.events_pending():
+                    break
+                Gtk.main_iteration()
+            print("SMOKE-OK rows=%d" % win.row_count())
+            win.destroy()
+            return 0
+        win.connect("destroy", Gtk.main_quit)
+        win.show_all()
+        win.refresh()
+        Gtk.main()
+        return 0
+    except Exception as exc:
+        if smoke:
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            print("SMOKE-FAIL %s" % (type(exc).__name__ + ":" + str(exc)).replace(" ", "_")[:70])
+            return 1
+        raise
+
+
+def build_window(Gtk, Gdk, GLib, Pango):
+    class ProtectWindow(Gtk.Window):
+        def __init__(self):
+            Gtk.Window.__init__(self, title="Kituo cha Ulinzi")
+            self.set_default_size(760, 720)
+            self.set_position(Gtk.WindowPosition.CENTER)
+            self.get_style_context().add_class("lgt-protect")
+            if os.path.isfile(APPLIANCE_ICON):
+                try:
+                    self.set_icon_from_file(APPLIANCE_ICON)
+                except Exception:
+                    pass
+            prov = Gtk.CssProvider()
+            prov.load_from_data(CSS.encode("utf-8"))
+            screen = Gdk.Screen.get_default()
+            if screen is not None:
+                Gtk.StyleContext.add_provider_for_screen(screen, prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            self.rows_box = None
+            self._build()
+            self.refresh()
+
+        def _build(self):
+            hb = Gtk.HeaderBar()
+            hb.set_show_close_button(True)
+            hb.get_style_context().add_class("lgt-header")
+            hb.set_title("Kituo cha Ulinzi")
+            hb.set_subtitle("Uhuru OS \u2022 Letema Group Tech")
+            btn = Gtk.Button.new_from_icon_name("view-refresh-symbolic", Gtk.IconSize.BUTTON)
+            btn.set_tooltip_text("Angalia tena")
+            btn.connect("clicked", lambda _b: self.refresh())
+            hb.pack_end(btn)
+            self.set_titlebar(hb)
+            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+            root.set_margin_top(22)
+            root.set_margin_bottom(22)
+            root.set_margin_start(26)
+            root.set_margin_end(26)
+            self.add(root)
+            self.banner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            self.banner_title = Gtk.Label(label="")
+            self.banner_title.set_xalign(0)
+            self.banner_title.get_style_context().add_class("lgt-banner-title")
+            self.banner_sub = Gtk.Label(label="")
+            self.banner_sub.set_xalign(0)
+            self.banner_sub.get_style_context().add_class("lgt-banner-sub")
+            self.banner.pack_start(self.banner_title, False, False, 0)
+            self.banner.pack_start(self.banner_sub, False, False, 0)
+            root.pack_start(self.banner, False, False, 0)
+            scroll = Gtk.ScrolledWindow()
+            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            self.rows_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            scroll.add(self.rows_box)
+            root.pack_start(scroll, True, True, 0)
+            self._rows = 0
+
+        def row_count(self):
+            return self._rows
+
+        def refresh(self):
+            for child in self.rows_box.get_children():
+                self.rows_box.remove(child)
+            items = collect()
+            cnt = summary(items)
+            ctx = self.banner.get_style_context()
+            for cls in ("lgt-banner-ok", "lgt-banner-warn", "lgt-banner-bad"):
+                ctx.remove_class(cls)
+            if cnt["bad"]:
+                ctx.add_class("lgt-banner-bad")
+                self.banner_title.set_text("Kuna hatari")
+                self.banner_sub.set_text("Vipengele %d vinahitaji hatua ya haraka." % cnt["bad"])
+            elif cnt["warn"]:
+                ctx.add_class("lgt-banner-warn")
+                self.banner_title.set_text("Angalia")
+                self.banner_sub.set_text("Mfumo uko salama, lakini mambo %d yanaweza kuboreshwa." % cnt["warn"])
+            else:
+                ctx.add_class("lgt-banner-ok")
+                self.banner_title.set_text("Umelindwa")
+                self.banner_sub.set_text("Hakuna tatizo la usalama lililopatikana.")
+            self._rows = 0
+            for ident, title, state, detail, action in items:
+                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+                row.get_style_context().add_class("lgt-row")
+                dot = Gtk.Label(label="\u25cf")
+                dot.get_style_context().add_class("lgt-dot-" + state)
+                row.pack_start(dot, False, False, 0)
+                txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                t = Gtk.Label(label=title)
+                t.set_xalign(0)
+                t.get_style_context().add_class("lgt-row-title")
+                d = Gtk.Label(label=detail)
+                d.set_xalign(0)
+                d.set_line_wrap(True)
+                d.set_max_width_chars(70)
+                d.get_style_context().add_class("lgt-row-detail")
+                txt.pack_start(t, False, False, 0)
+                txt.pack_start(d, False, False, 0)
+                row.pack_start(txt, True, True, 0)
+                if action:
+                    b = Gtk.Button(label=action[0])
+                    b.get_style_context().add_class("lgt-act")
+                    b.set_valign(Gtk.Align.CENTER)
+                    b.connect("clicked", self.on_action, action[1])
+                    row.pack_end(b, False, False, 0)
+                self.rows_box.pack_start(row, False, False, 0)
+                self._rows += 1
+            self.rows_box.show_all()
+
+        def on_action(self, _btn, code):
+            def worker():
+                do_action(code)
+                GLib.idle_add(self.refresh)
+            threading.Thread(target=worker, daemon=True).start()
+
+    return ProtectWindow()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

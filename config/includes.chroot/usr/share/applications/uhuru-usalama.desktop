@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Taarifa ya Usalama na Faragha
+Name[sw]=Taarifa ya Usalama na Faragha
+Comment=Tunachokilinda, tunachokifanya, na tusichokifanya kamwe
+Comment[sw]=Tunachokilinda, tunachokifanya, na tusichokifanya kamwe
+Exec=bash -c "less /usr/share/doc/uhuru/USALAMA.md"
+Icon=help-about
+Terminal=true
+Categories=System;Security;

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Uhuru Phase 8 init
+Exec=/usr/local/bin/uhuru-phase8-init
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

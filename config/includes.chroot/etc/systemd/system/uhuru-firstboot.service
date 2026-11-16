@@ -1,0 +1,13 @@
+[Unit]
+Description=Uhuru OS: usafi wa mara ya kwanza baada ya usakinishaji
+ConditionKernelCommandLine=!boot=live
+ConditionPathExists=!/var/lib/uhuru-firstboot.done
+After=local-fs.target
+Before=display-manager.service lightdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uhuru-firstboot
+
+[Install]
+WantedBy=multi-user.target

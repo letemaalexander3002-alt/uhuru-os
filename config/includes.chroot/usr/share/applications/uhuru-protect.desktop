@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kituo cha Ulinzi
+Name[sw]=Kituo cha Ulinzi
+GenericName=Security Center
+Comment=Hali ya usalama: ngome ya moto, sasisho, usimbaji wa diski, ulinzi wa flash
+Comment[sw]=Hali ya usalama: ngome ya moto, sasisho, usimbaji wa diski, ulinzi wa flash
+Exec=uhuru-protect
+Icon=security-high
+Terminal=false
+Categories=System;Settings;Security;
+Keywords=usalama;ulinzi;firewall;ngome;virus;antivirus;security;

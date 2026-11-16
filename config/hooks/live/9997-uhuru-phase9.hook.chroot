@@ -1,0 +1,40 @@
+#!/bin/sh
+# Uhuru OS awamu ya 9: ulinzi (ngome ya moto, AppArmor, sasisho za usalama, ClamAV, Flash Safe, uwazi). Haivunji build.
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+PK="nftables apparmor apparmor-utils unattended-upgrades clamav clamav-freshclam libnotify-bin"
+apt-get update -qq >/dev/null 2>&1 || echo "uhuru-phase9: ONYO: apt-get update imeshindwa"
+if ! apt-get install -y --no-install-recommends $PK >/tmp/uhuru-p9.log 2>&1; then
+    echo "uhuru-phase9: ONYO: usakinishaji wa pamoja umeshindwa; najaribu moja moja"
+    for p in $PK; do
+        apt-get install -y --no-install-recommends "$p" >/dev/null 2>&1 || echo "uhuru-phase9: ONYO: $p haikusakinishwa"
+    done
+fi
+dpkg --configure -a >/dev/null 2>&1 || true
+apt-get clean || true
+
+chmod 0755 /usr/local/sbin/uhuru-firewall /usr/local/bin/uhuru-usbscan /usr/local/bin/uhuru-usbwatch /usr/local/bin/uhuru-sign /usr/local/bin/uhuru-protect
+
+# ngome ya moto: wasifu wa 'umma' kwa msingi, huduma ya nftables ianze kila boot
+mkdir -p /etc/uhuru-firewall
+/usr/local/sbin/uhuru-firewall regen umma
+systemctl enable nftables >/dev/null 2>&1 || echo "uhuru-phase9: ONYO: nftables haikuwashwa"
+
+# AppArmor ianze kila boot; ClamAV isipakue hifadhidata kiotomatiki (mtandao ni ghali); cups-browsed (hatari ya mbali) imefungwa
+systemctl enable apparmor >/dev/null 2>&1 || true
+systemctl disable clamav-freshclam.service >/dev/null 2>&1 || true
+systemctl mask cups-browsed.service >/dev/null 2>&1 || true
+
+# uwazi: orodha ya vifurushi (SBOM) na toleo
+mkdir -p /usr/share/uhuru
+dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null | sort > /usr/share/uhuru/SBOM-packages.txt
+printf 'Uhuru OS 1.0\nLetema Group Tech\nImejengwa: %s\n' "$(date -u +%F)" > /usr/share/uhuru/RELEASE
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications || true; fi
+
+# uthibitisho wa ujenzi (hautavunja build)
+/usr/local/bin/uhuru-usbscan --selftest || echo "uhuru-phase9: ONYO: usbscan selftest imeshindwa"
+/usr/local/bin/uhuru-sign --selftest || echo "uhuru-phase9: ONYO: sign selftest imeshindwa"
+/usr/local/bin/uhuru-protect --check || echo "uhuru-phase9: ONYO: baadhi ya vipengele vya ulinzi si sawa (kawaida AppArmor/ngome hazijawashwa ndani ya chroot)"
+echo "uhuru-phase9: ulinzi umewekwa"
+exit 0

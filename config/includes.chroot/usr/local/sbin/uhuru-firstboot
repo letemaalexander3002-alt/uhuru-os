@@ -1,0 +1,13 @@
+#!/bin/sh
+# Uhuru OS: usafi wa mara ya kwanza kwenye mfumo ULIOSAKINISHWA (haiendeshwi kwenye live). Haivunji boot.
+LOG=/var/log/uhuru-firstboot.log
+{
+    echo "uhuru-firstboot: $(date -u +%FT%TZ)"
+    rm -f /etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf
+    [ -f /etc/lightdm/lightdm.conf ] && sed -i -E 's/^[[:space:]]*(autologin-user(-timeout)?=mtumiaji.*)$/#\1/' /etc/lightdm/lightdm.conf
+    touch /var/lib/uhuru-setup.done
+    [ -x /usr/local/sbin/uhuru-locale-setup ] && /usr/local/sbin/uhuru-locale-setup
+    echo "uhuru-firstboot: tayari"
+} >> "$LOG" 2>&1
+touch /var/lib/uhuru-firstboot.done
+exit 0

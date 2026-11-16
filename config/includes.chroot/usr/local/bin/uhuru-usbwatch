@@ -1,0 +1,36 @@
+#!/bin/sh
+# Uhuru Flash Safe: inaangalia flash/diski za nje zinapounganishwa (/run/media/$USER) na kuzikagua mara moja.
+# Mount zilizokuwepo wakati wa login hazikaguliwi tena (hazikuulizi); zile mpya zinakaguliwa ndani ya sekunde chache.
+U=$(id -un)
+SEEN=$(mktemp)
+trap 'rm -f "$SEEN"' EXIT
+notify() {
+    if command -v notify-send >/dev/null 2>&1; then notify-send -i dialog-information "$1" "$2"
+    else zenity --info --no-wrap --timeout=8 --title="$1" --text="$2" 2>/dev/null; fi
+}
+mark_existing() { for d in /run/media/"$U"/* /media/"$U"/*; do [ -d "$d" ] && echo "$d" >> "$SEEN"; done; }
+handle() {
+    d=$1; name=$(basename "$d")
+    n=$(uhuru-usbscan "$d" --count 2>/dev/null || echo 0)
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    if [ "$n" -gt 0 ]; then
+        if zenity --question --width=480 --title="Uhuru Flash Safe" --ok-label="Safisha sasa" --cancel-label="Baadaye" \
+            --text="Flash <b>$name</b> ina faili <b>$n</b> zinazotia shaka (kawaida za virus vya \"shortcut\").\n\nSafisha sasa? Faili hatari zitahamishiwa <b>~/Uhuru-Quarantine</b> (hazifutwi) na folda zako zilizofichwa zitafunuliwa." 2>/dev/null; then
+            uhuru-usbscan "$d" --clean >/dev/null 2>&1
+            notify "Uhuru Flash Safe" "Flash '$name' imesafishwa."
+        fi
+    else
+        notify "Uhuru Flash Safe" "Flash '$name' ni safi."
+    fi
+}
+mark_existing
+while :; do
+    for d in /run/media/"$U"/* /media/"$U"/*; do
+        [ -d "$d" ] || continue
+        grep -qxF "$d" "$SEEN" && continue
+        echo "$d" >> "$SEEN"
+        sleep 2
+        handle "$d"
+    done
+    sleep 3
+done

@@ -1,0 +1,9 @@
+#!/bin/sh
+# (root) inahakikisha chapa ya kisakinishi ipo, kisha inaanzisha Calamares. Chapa ikikosekana inarudi kwenye 'debian' ili kisakinishi kisikwame.
+S=/etc/calamares/settings.conf
+b=$(sed -n 's/^branding:[[:space:]]*//p' "$S" 2>/dev/null | head -n 1 | tr -d "\"' ")
+if [ -n "$b" ] && [ "$b" != debian ] && [ ! -f "/etc/calamares/branding/$b/branding.desc" ]; then
+    sed -i 's/^branding:.*/branding: debian/' "$S"
+fi
+[ -n "$DISPLAY" ] && export QT_QPA_PLATFORM=xcb
+exec calamares "$@"

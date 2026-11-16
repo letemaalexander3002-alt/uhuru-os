@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sakinisha Uhuru OS
+Name[sw]=Sakinisha Uhuru OS
+GenericName=Install Uhuru OS
+Comment=Sakinisha Uhuru OS kwenye diski ya kompyuta hii
+Comment[sw]=Sakinisha Uhuru OS kwenye diski ya kompyuta hii
+Exec=uhuru-installer
+Icon=/usr/share/uhuru-store/icons/uhuru-installer.svg
+Terminal=false
+Categories=System;Settings;
+Keywords=install;sakinisha;usakinishaji;disk;diski;
