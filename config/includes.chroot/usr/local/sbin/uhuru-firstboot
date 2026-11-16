@@ -6,6 +6,10 @@ LOG=/var/log/uhuru-firstboot.log
     rm -f /etc/lightdm/lightdm.conf.d/60-uhuru-live-autologin.conf
     [ -f /etc/lightdm/lightdm.conf ] && sed -i -E 's/^[[:space:]]*(autologin-user(-timeout)?=mtumiaji.*)$/#\1/' /etc/lightdm/lightdm.conf
     touch /var/lib/uhuru-setup.done
+    if [ "$(readlink /etc/systemd/system/accounts-daemon.service 2>/dev/null)" = /dev/null ]; then
+        rm -f /etc/systemd/system/accounts-daemon.service
+        systemctl daemon-reload
+    fi
     [ -x /usr/local/sbin/uhuru-locale-setup ] && /usr/local/sbin/uhuru-locale-setup
     echo "uhuru-firstboot: tayari"
 } >> "$LOG" 2>&1

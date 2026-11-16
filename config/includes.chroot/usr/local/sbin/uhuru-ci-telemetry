@@ -221,6 +221,7 @@ p7check() {
     if [ -f /etc/systemd/system/multi-user.target.wants/uhuru-firstboot.service ] && [ -x /usr/local/sbin/uhuru-firstboot ]; then fb=ok; fi
     [ -f /etc/systemd/system/accounts-daemon.service.d/uhuru-live.conf ] && acct=ok
     dpkg-query -W -f='${db:Status-Abbrev}' timeshift 2>/dev/null | grep -q '^ii' && ts=yes
+    case "$inst|$miss|$fb|$acct" in "INSTALLER-OK"*"||ok|ok") touch /run/uhuru-p7.done 2>/dev/null || true ;; esac
     printf 'UHURU-P7 inst=%s pkgmiss=%s fb=%s acct=%s ts=%s' "${inst:-empty}" "${miss:-none}" "$fb" "$acct" "$ts"
 }
 # v17.0: ukaguzi wa awamu ya 8 (Uhuru Dev Edition: zana, zsh, terminali)
@@ -239,6 +240,7 @@ p8check() {
             sh=$(timeout -k 2 20 runuser -u "$xu" -- env HOME="/home/$xu" /usr/local/bin/uhuru-shell --print </dev/null 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9' ' ' | tr -s ' ' ',' | cut -c1-20)
         fi
     fi
+    case "$cfg|$dev|$zs|$bs|$sh" in "ok|DEV-OK"*"|ZSH-OK"*"|BASH-OK"*"|zsh"*) touch /run/uhuru-p8.done 2>/dev/null || true ;; esac
     printf 'UHURU-P8 cfg=%s dev=%s zsh=%s bash=%s shell=%s ws=%s' "$cfg" "${dev:-empty}" "${zs:-empty}" "${bs:-empty}" "${sh:-empty}" "${ws:-empty}"
 }
 # v17.1: ukaguzi wa awamu ya 9 (ulinzi: ngome ya moto, AppArmor, kernel, flash, saini, Kituo cha Ulinzi)
@@ -257,7 +259,12 @@ p9check() {
             [ -n "$gui" ] || gui=empty
         fi
     fi
-    printf 'UHURU-P9 fw=%s protect=%s usb=%s sign=%s watch=%s gui=%s' "${fw:-empty}" "${pr:-empty}" "${us:-empty}" "${sg:-empty}" "${wc:-0}" "$gui"
+    local aadiag
+    aadiag=$( { printf 'k=%s svc=%s pkg=%s cmd=%s' "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null || echo none)" "$(timeout -k 1 5 systemctl is-active apparmor 2>&1 | head -n 1)" "$(dpkg-query -W -f='${db:Status-Abbrev}' apparmor 2>/dev/null | tr -d ' ')" "$(grep -o 'apparmor=[^ ]*\|security=[^ ]*' /proc/cmdline 2>/dev/null | tr '\n' ' ')"; } | tr -c 'A-Za-z0-9=_.,+-' ' ' | tr -s ' ' ',' | cut -c1-90)
+    case "$fw|$pr|$us|$sg|$gui" in
+        "FW-OK"*"|PROTECT-OK,"*"|USBSCAN-OK"*"|SIGN-OK"*"|SMOKE-OK"*) { [ "${wc:-0}" -ge 1 ] 2>/dev/null && touch /run/uhuru-p9.done; } 2>/dev/null || true ;;
+    esac
+    printf 'UHURU-P9 fw=%s protect=%s usb=%s sign=%s watch=%s gui=%s aadiag=%s' "${fw:-empty}" "${pr:-empty}" "${us:-empty}" "${sg:-empty}" "${wc:-0}" "$gui" "${aadiag:-none}"
 }
 n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""; P6PID=""
 while :; do
@@ -294,15 +301,15 @@ while :; do
         RPID=$!
     fi
     if [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ]; then wait; exit 0; fi
-    if [ $((n % 6)) -eq 2 ] && { [ -z "$P7PID" ] || ! kill -0 "$P7PID" 2>/dev/null; }; then
+    if [ ! -e /run/uhuru-p7.done ] && [ $((n % 6)) -eq 2 ] && { [ -z "$P7PID" ] || ! kill -0 "$P7PID" 2>/dev/null; }; then
         { emit "$(p7check)"; } &
         P7PID=$!
     fi
-    if [ $((n % 6)) -eq 5 ] && { [ -z "$P8PID" ] || ! kill -0 "$P8PID" 2>/dev/null; }; then
+    if [ ! -e /run/uhuru-p8.done ] && [ $((n % 6)) -eq 5 ] && { [ -z "$P8PID" ] || ! kill -0 "$P8PID" 2>/dev/null; }; then
         { emit "$(p8check)"; } &
         P8PID=$!
     fi
-    if [ $((n % 6)) -eq 4 ] && { [ -z "$P9PID" ] || ! kill -0 "$P9PID" 2>/dev/null; }; then
+    if [ ! -e /run/uhuru-p9.done ] && [ $((n % 6)) -eq 4 ] && { [ -z "$P9PID" ] || ! kill -0 "$P9PID" 2>/dev/null; }; then
         { emit "$(p9check)"; } &
         P9PID=$!
     fi

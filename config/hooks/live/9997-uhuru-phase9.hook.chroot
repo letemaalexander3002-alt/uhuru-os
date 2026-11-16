@@ -23,6 +23,14 @@ systemctl enable nftables >/dev/null 2>&1 || echo "uhuru-phase9: ONYO: nftables 
 
 # AppArmor ianze kila boot; ClamAV isipakue hifadhidata kiotomatiki (mtandao ni ghali); cups-browsed (hatari ya mbali) imefungwa
 systemctl enable apparmor >/dev/null 2>&1 || true
+for p in apparmor apparmor-utils; do
+    dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null | grep -q '^ii' || apt-get install -y --no-install-recommends "$p" >/dev/null 2>&1 || echo "uhuru-phase9: ONYO: $p haikusakinishwa"
+done
+if [ -f /lib/systemd/system/apparmor.service ] || [ -f /usr/lib/systemd/system/apparmor.service ]; then
+    mkdir -p /etc/systemd/system/sysinit.target.wants
+    ln -sf /lib/systemd/system/apparmor.service /etc/systemd/system/sysinit.target.wants/apparmor.service
+fi
+echo "uhuru-phase9: apparmor pkg=$(dpkg-query -W -f='${db:Status-Abbrev}' apparmor 2>/dev/null | tr -d ' ') enabled=$(systemctl is-enabled apparmor 2>&1 | head -n 1)"
 systemctl disable clamav-freshclam.service >/dev/null 2>&1 || true
 systemctl mask cups-browsed.service >/dev/null 2>&1 || true
 

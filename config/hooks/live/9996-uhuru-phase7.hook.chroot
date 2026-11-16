@@ -23,6 +23,10 @@ apt-get clean || true
 mkdir -p /etc/systemd/system/multi-user.target.wants
 ln -sf /etc/systemd/system/uhuru-firstboot.service /etc/systemd/system/multi-user.target.wants/uhuru-firstboot.service
 chmod 0755 /usr/local/sbin/uhuru-firstboot /usr/local/sbin/uhuru-installer-run /usr/local/bin/uhuru-installer
+# uhuru-v172: AccountsService imefichwa (mask) kwenye live. Condition peke yake ilifanya D-Bus isubiri sekunde 25 (lightdm na greeter kila kimoja),
+# login ikachelewa dakika 2. Kwa mask, D-Bus inashindwa mara moja. uhuru-firstboot inaiondoa mask kwenye mfumo uliosakinishwa.
+mkdir -p /etc/systemd/system
+ln -sf /dev/null /etc/systemd/system/accounts-daemon.service
 
 # 3. Calamares: chapa ya Uhuru na mipangilio (kila badiliko linakaguliwa na linarudishwa likiharibu YAML)
 yaml_ok() {
