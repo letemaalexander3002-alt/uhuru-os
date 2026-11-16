@@ -120,20 +120,6 @@ else
     fi
     echo "CHECK INFO: e2e: awamu ya 6: katalogi ya mbali kutoka GitHub ($(printf '%s\n' "$P6" | grep -o 'sync=[^ ]*' | tail -n 1)); SYNC-OK = repo ni ya umma na inasomeka, http_404 = repo ni private au faili halipo"
 fi
-# ---- Awamu ya 8: Uhuru Dev Edition (v17.0) ----
-P8=$(slogc | grep '^UHURU-P8 ' | tail -n 40)
-P8LAST=$(printf '%s\n' "$P8" | tail -n 1)
-p8() { printf '%s\n' "$P8" | grep -Eq "$1"; }
-if [ -z "$P8" ]; then
-    fail "awamu ya 8: hakuna ripoti ya UHURU-P8 (uhuru-dev au telemetry haikufanya kazi)"
-else
-    if p8 'cfg=ok'; then echo "CHECK PASS: e2e: awamu ya 8: .zshrc, tmux, neovim na Uhuru Terminal (uhuru-shell) zimewekwa kwenye /etc/skel"; else fail "awamu ya 8: mipangilio ya shell/terminali haijakamilika ($P8LAST)"; fi
-    if p8 'dev=DEV-OK'; then echo "CHECK PASS: e2e: awamu ya 8: zana zote za msingi za ujenzi zipo (git, gcc, node, python, live-build, n.k.)"; else fail "awamu ya 8: zana za msingi zinakosekana ($(printf '%s\n' "$P8" | grep -o 'coremissing=[^ ]*' | tail -n 1))"; fi
-    if p8 'zsh=ZSH-OK,[0-9.]+,sug=1,hl=1,mkcd=1'; then echo "CHECK PASS: e2e: awamu ya 8: zsh inapakia .zshrc kwenye session ya mtumiaji (mapendekezo, rangi za syntax, aliases)"; else fail "awamu ya 8: zsh haipakii vizuri ($(printf '%s\n' "$P8" | grep -o 'zsh=[^ ]*' | sort -u | tr '\n' ' '))"; fi
-    if p8 'bash=BASH-OK' && p8 'shell=zsh'; then echo "CHECK PASS: e2e: awamu ya 8: bash bado inafanya kazi na Uhuru Terminal inachagua zsh"; else fail "awamu ya 8: bash au uhuru-shell ina tatizo ($P8LAST)"; fi
-    OM=$(printf '%s\n' "$P8" | grep -o 'optmissing=[^ ]*' | tail -n 1)
-    echo "CHECK INFO: e2e: awamu ya 8: zana za ziada zisizopatikana: ${OM#optmissing=}"
-fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0

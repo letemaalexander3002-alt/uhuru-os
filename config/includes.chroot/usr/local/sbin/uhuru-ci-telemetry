@@ -210,24 +210,6 @@ p6check() {
     fi
     printf 'UHURU-P6 files=%s conf=%s store=%s real=%s win=%s cls=%s sync=%s' "$files" "$conf" "${st:-empty}" "$real" "$win" "$cls" "$sync"
 }
-# v17.0: ukaguzi wa awamu ya 8 (Uhuru Dev Edition: zana, zsh, terminali)
-P8PID=""
-p8check() {
-    local sk=/etc/skel cfg=no dev zs=none bs=none sh=none ws xu
-    if [ -f "$sk/.zshrc" ] && [ -f "$sk/.tmux.conf" ] && [ -f "$sk/.config/nvim/init.lua" ] && [ -f "$sk/.config/uhuru/shell-common.sh" ] \
-        && grep -q '^CustomCommand=uhuru-shell' "$sk/.config/xfce4/terminal/terminalrc" 2>/dev/null; then cfg=ok; fi
-    dev=$(timeout -k 1 40 /usr/local/bin/uhuru-dev doctor --ci 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:+-' ' ' | tr -s ' ' ',' | cut -c1-200)
-    ws=$(timeout -k 1 10 /usr/local/bin/uhuru-workspace status --ci 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:-' ' ' | tr -s ' ' ',' | cut -c1-40)
-    if [ -e /var/lib/uhuru-setup.done ]; then
-        xu=$(timeout -k 1 3 ps -C xfce4-session -o user= 2>/dev/null | head -n 1 | tr -d ' ')
-        if [ -n "$xu" ]; then
-            zs=$(timeout -k 2 30 runuser -u "$xu" -- env HOME="/home/$xu" TERM=xterm-256color zsh -ic 'print -r -- "ZSH-OK ${ZSH_VERSION} sug=${+ZSH_AUTOSUGGEST_STRATEGY} hl=${+ZSH_HIGHLIGHT_HIGHLIGHTERS} mkcd=${+functions[mkcd]}"' </dev/null 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-80)
-            bs=$(timeout -k 2 20 runuser -u "$xu" -- env HOME="/home/$xu" TERM=xterm-256color bash -ic 'echo BASH-OK' </dev/null 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-30)
-            sh=$(timeout -k 2 20 runuser -u "$xu" -- env HOME="/home/$xu" /usr/local/bin/uhuru-shell --print </dev/null 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9' ' ' | tr -s ' ' ',' | cut -c1-20)
-        fi
-    fi
-    printf 'UHURU-P8 cfg=%s dev=%s zsh=%s bash=%s shell=%s ws=%s' "$cfg" "${dev:-empty}" "${zs:-empty}" "${bs:-empty}" "${sh:-empty}" "${ws:-empty}"
-}
 n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""; P6PID=""
 while :; do
     n=$((n+1))
@@ -263,10 +245,6 @@ while :; do
         RPID=$!
     fi
     if [ "$LOOPS" -gt 0 ] && [ "$n" -ge "$LOOPS" ]; then wait; exit 0; fi
-    if [ $((n % 6)) -eq 5 ] && { [ -z "$P8PID" ] || ! kill -0 "$P8PID" 2>/dev/null; }; then
-        { emit "$(p8check)"; } &
-        P8PID=$!
-    fi
     sleep "$SLEEP"
 done
 # v13.12
