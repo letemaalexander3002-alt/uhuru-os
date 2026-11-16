@@ -1,0 +1,30 @@
+{
+  "categories": [
+    {"id": "dev", "name": "Zana za Msanidi", "icon": "utilities-terminal-symbolic",
+     "fallback_icon": "applications-development",
+     "desc": "Zana za ziada za ujenzi: mashine pepe, hifadhidata, uhariri wa msimbo na simu za Android. Zana za msingi (git, node, python, gcc) tayari ziko kwenye mfumo; angalia kwa: uhuru-dev doctor."}
+  ],
+  "apps": [
+    {"id": "virt-manager", "type": "apt", "name": "Virt-Manager", "category": "dev",
+     "summary": "Tengeneza na uendeshe mashine pepe (KVM/QEMU) kwa kuonyesha kwa michoro.",
+     "package": "virt-manager", "desktop": "virt-manager.desktop", "icon": "virt-manager", "keywords": "vm qemu kvm mashine pepe virtualbox"},
+    {"id": "sqlitebrowser", "type": "apt", "name": "DB Browser for SQLite", "category": "dev",
+     "summary": "Tazama na uhariri hifadhidata za SQLite kwa meza na maswali.",
+     "package": "sqlitebrowser", "desktop": "sqlitebrowser.desktop", "icon": "sqlitebrowser", "keywords": "sqlite database hifadhidata sql"},
+    {"id": "meld", "type": "apt", "name": "Meld", "category": "dev",
+     "summary": "Linganisha mafaili na folda, na utatue migongano ya git kwa macho.",
+     "package": "meld", "desktop": "org.gnome.meld.desktop", "icon": "org.gnome.meld", "keywords": "diff linganisha merge git"},
+    {"id": "gvim", "type": "apt", "name": "Vim (GTK)", "category": "dev",
+     "summary": "Kihariri chenye nguvu cha msimbo chenye dirisha lake, kwa wapenzi wa Vim.",
+     "package": "vim-gtk3", "desktop": "gvim.desktop", "icon": "gvim", "keywords": "vim editor msimbo"},
+    {"id": "emacs", "type": "apt", "name": "Emacs", "category": "dev",
+     "summary": "Mazingira makubwa ya kuhariri na kupanga kazi, yanayoweza kupanuliwa bila mwisho.",
+     "package": "emacs", "desktop": "emacs.desktop", "icon": "emacs", "keywords": "emacs editor msimbo"},
+    {"id": "scrcpy", "type": "apt", "name": "scrcpy", "category": "dev",
+     "summary": "Onyesha na udhibiti simu ya Android kwenye kompyuta kupitia USB.",
+     "package": "scrcpy", "desktop": "scrcpy.desktop", "icon": "scrcpy", "keywords": "android simu adb skrini"},
+    {"id": "ghex", "type": "apt", "name": "GHex", "category": "dev",
+     "summary": "Hariri mafaili ya binary kwa mtazamo wa hexadecimal.",
+     "package": "ghex", "desktop": "org.gnome.GHex.desktop", "icon": "org.gnome.GHex", "keywords": "hex binary"}
+  ]
+}

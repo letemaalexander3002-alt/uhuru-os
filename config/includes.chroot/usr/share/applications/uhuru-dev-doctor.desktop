@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Uhuru Dev: Afya ya zana
+Name[sw]=Uhuru Dev: Afya ya zana
+Comment=Angalia zana zote za ujenzi (git, node, python, gcc, n.k.)
+Comment[sw]=Angalia zana zote za ujenzi (git, node, python, gcc, n.k.)
+Exec=bash -c "uhuru-dev doctor; echo; read -rp 'Bonyeza Enter kufunga... ' _"
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;

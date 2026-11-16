@@ -1,0 +1,100 @@
+#!/bin/bash
+# uhuru-dev - zana za msanidi za Uhuru OS (Uhuru Dev Edition)
+#   uhuru-dev doctor [--ci]   kagua zana za ujenzi (--ci: mstari mmoja kwa mashine)
+#   uhuru-dev setup [--yes]   weka jina/barua ya git, SSH key na mapendekezo ya git
+#   uhuru-dev help
+CORE_CMDS="git curl wget gcc make python3 pip3 node npm jq rg fdfind batcat fzf tmux nvim zsh btop tree rsync ssh sqlite3 shellcheck aria2c socat lb debootstrap xorriso"
+OPT_CMDS="gh cmake pipx podman docker distrobox adb fastboot scrcpy zoxide exa fish tig shfmt git-lfs"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+ver() {
+    case "$1" in
+        ssh)  ssh -V 2>&1 | head -n 1 ;;
+        lb)   lb --version 2>&1 | head -n 1 ;;
+        pip3) pip3 --version 2>&1 | awk '{print $1" "$2}' ;;
+        make) make --version 2>&1 | head -n 1 ;;
+        *)    timeout 4 "$1" --version 2>&1 | head -n 1 ;;
+    esac | cut -c1-58
+}
+
+cmd_doctor() {
+    local ci=0 c miss="" om="" nc=0 tc=0 no=0 to=0
+    [ "$1" = "--ci" ] && ci=1
+    [ "$ci" = 1 ] || printf '\n  \033[1;33mUhuru Dev\033[0m - afya ya zana za msanidi\n\n  \033[1mZana za msingi\033[0m\n'
+    for c in $CORE_CMDS; do
+        tc=$((tc + 1))
+        if have "$c"; then
+            nc=$((nc + 1))
+            [ "$ci" = 1 ] || printf '   \033[32m✔\033[0m %-12s %s\n' "$c" "$(ver "$c")"
+        else
+            miss="$miss${miss:+,}$c"
+            [ "$ci" = 1 ] || printf '   \033[31m✘\033[0m %-12s haipo\n' "$c"
+        fi
+    done
+    [ "$ci" = 1 ] || printf '\n  \033[1mZana za ziada\033[0m\n'
+    for c in $OPT_CMDS; do
+        to=$((to + 1))
+        if have "$c"; then
+            no=$((no + 1))
+            [ "$ci" = 1 ] || printf '   \033[32m✔\033[0m %-12s %s\n' "$c" "$(ver "$c")"
+        else
+            om="$om${om:+,}$c"
+            [ "$ci" = 1 ] || printf '   \033[33m–\033[0m %-12s haipo (sakinisha: sudo apt install <kifurushi>)\n' "$c"
+        fi
+    done
+    if [ "$ci" = 1 ]; then
+        if [ -z "$miss" ]; then
+            echo "DEV-OK coremissing=none core=$nc/$tc opt=$no/$to optmissing=${om:-none}"
+        else
+            echo "DEV-FAIL coremissing=$miss core=$nc/$tc opt=$no/$to optmissing=${om:-none}"
+        fi
+    else
+        printf '\n  Msingi: %s/%s   Ziada: %s/%s\n' "$nc" "$tc" "$no" "$to"
+        [ -z "$miss" ] && printf '  \033[32mZana zote za msingi zipo. Uko tayari kujenga.\033[0m\n\n' || printf '  \033[31mZinakosekana: %s\033[0m\n\n' "$miss"
+    fi
+    [ -z "$miss" ]
+}
+
+cmd_setup() {
+    local yes=0 name email ans
+    [ "$1" = "--yes" ] && yes=1
+    name=$(git config --global user.name 2>/dev/null || true)
+    email=$(git config --global user.email 2>/dev/null || true)
+    if [ -z "$name" ]; then
+        if [ "$yes" = 1 ]; then name=${GIT_NAME:-}; else read -rp "Jina lako (litaonekana kwenye git commits): " name; fi
+        [ -n "$name" ] && git config --global user.name "$name"
+    fi
+    if [ -z "$email" ]; then
+        if [ "$yes" = 1 ]; then email=${GIT_EMAIL:-}; else read -rp "Barua pepe yako (ya GitHub): " email; fi
+        [ -n "$email" ] && git config --global user.email "$email"
+    fi
+    git config --global init.defaultBranch master
+    git config --global pull.rebase false
+    git config --global color.ui auto
+    have nvim && git config --global core.editor nvim
+    mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+    if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+        ans=y
+        [ "$yes" = 1 ] || read -rp "Tengeneza SSH key mpya (ed25519)? [Y/n] " ans
+        case "${ans:-y}" in
+            [Nn]*) ;;
+            *) ssh-keygen -q -t ed25519 -N "" -C "${email:-uhuru}" -f "$HOME/.ssh/id_ed25519" && echo "SSH key imetengenezwa." ;;
+        esac
+    fi
+    if [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+        echo; echo "Public key yako (iweke GitHub > Settings > SSH and GPG keys):"; cat "$HOME/.ssh/id_ed25519.pub"
+    fi
+    echo
+    if have gh; then
+        if gh auth status >/dev/null 2>&1; then echo "gh: umeshaingia GitHub."
+        else echo "Hatua inayofuata: gh auth login   (kisha: gh auth setup-git)"; fi
+    fi
+    echo "Kumbuka: kabla ya kisakinishi (awamu ya 7), tumia 'uhuru-workspace' kuhifadhi kazi na funguo zako."
+}
+
+case "${1:-help}" in
+    doctor) shift; cmd_doctor "$@" ;;
+    setup)  shift; cmd_setup "$@" ;;
+    *) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

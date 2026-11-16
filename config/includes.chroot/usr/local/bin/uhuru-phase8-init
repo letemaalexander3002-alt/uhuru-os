@@ -1,0 +1,16 @@
+#!/bin/sh
+# Uhuru OS awamu ya 8: F12 = terminali ya kushuka; unganisha diski ya kazi (UHURU-WORK) ikiwepo.
+# Inaendeshwa kila login; haibadilishi mipangilio ambayo mtumiaji ameshaweka.
+if command -v xfconf-query >/dev/null 2>&1; then
+    i=0
+    while [ "$i" -lt 15 ]; do
+        xfconf-query -c xfce4-keyboard-shortcuts -l >/dev/null 2>&1 && break
+        i=$((i + 1)); sleep 1
+    done
+    CUR=$(xfconf-query -c xfce4-keyboard-shortcuts -p /commands/custom/F12 2>/dev/null || true)
+    [ -n "$CUR" ] || xfconf-query -c xfce4-keyboard-shortcuts -p /commands/custom/F12 -n -t string -s "xfce4-terminal --drop-down" >/dev/null 2>&1
+fi
+if [ -e /dev/disk/by-label/UHURU-WORK ] && command -v uhuru-workspace >/dev/null 2>&1; then
+    uhuru-workspace mount >/dev/null 2>&1
+fi
+exit 0

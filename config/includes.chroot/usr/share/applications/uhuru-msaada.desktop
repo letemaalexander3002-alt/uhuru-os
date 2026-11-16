@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mwongozo wa Msanidi
+Name[sw]=Mwongozo wa Msanidi
+Comment=Njia fupi za kibodi, terminali, git, tmux na zana za Uhuru
+Comment[sw]=Njia fupi za kibodi, terminali, git, tmux na zana za Uhuru
+Exec=bash -c "msaada | less -R"
+Icon=help-browser
+Terminal=true
+Categories=Development;
