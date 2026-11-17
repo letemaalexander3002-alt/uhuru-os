@@ -19,7 +19,7 @@ header.top{position:sticky;top:0;z-index:5;background:var(--teal);color:#fff;dis
 button{font:inherit;cursor:pointer}
 .icon-btn{background:transparent;border:0;color:#fff;font-size:22px;padding:4px 8px;border-radius:8px}
 .icon-btn:hover{background:rgba(255,255,255,.14)}
-main{max-width:860px;margin:0 auto;padding:16px 16px 96px}
+main{max-width:860px;margin:0 auto;padding:16px 16px 96px;overflow-x:hidden}
 .hero{background:linear-gradient(90deg,var(--teal),var(--teal2));color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:16px}
 .hero h1{margin:0 0 4px;font-size:20px}.hero p{margin:0;color:#d6efef;font-size:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(11,59,68,.06);margin-bottom:12px}
@@ -32,7 +32,7 @@ main{max-width:860px;margin:0 auto;padding:16px 16px 96px}
 .app .sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .badge{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:1px 9px;background:#e6f1f1;color:var(--teal);margin-right:6px}
 .badge.gold{background:var(--gold);color:var(--ink)}.badge.off{background:#fee4e2;color:#912018}
-.btn{border:0;border-radius:999px;padding:9px 20px;font-weight:700;background:var(--gold);color:var(--ink)}
+.btn{border:0;border-radius:999px;padding:9px 16px;font-weight:700;background:var(--gold);color:var(--ink)}
 .btn:hover{background:#ffd43b}.btn.dark{background:var(--teal);color:#fff}.btn.dark:hover{background:var(--teal2)}
 .btn.ghost{background:transparent;border:1px solid #c9d8d8;color:var(--muted)}
 .btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
@@ -76,6 +76,7 @@ code{background:#eef3f3;border-radius:6px;padding:1px 6px;font-size:13px}
 <header class="top">
   <div class="grow"><div class="brand">Letema Group Tech</div><div class="title">Vendor Console</div></div>
   <span id="pill" class="pill off">Haijaunganishwa</span>
+  <button class="icon-btn" id="adm" title="Wasanidi na Malipo" aria-label="Wasanidi na Malipo" style="font-size:14px;font-weight:700">Wasanidi</button>
   <button class="icon-btn" id="gear" title="Mipangilio" aria-label="Mipangilio">⚙</button>
 </header>
 <main id="app"></main>
@@ -88,7 +89,8 @@ code{background:#eef3f3;border-radius:6px;padding:1px 6px;font-size:13px}
 const CATEGORIES = [["letema","Bidhaa za Letema Group Tech"],["office","Ofisi na Uzalishaji"],["internet","Mtandao"],
   ["graphics","Picha na Michoro"],["media","Sauti na Video"],["education","Elimu"],["tools","Zana za Mfumo"]];
 const CAT_NAME = Object.fromEntries(CATEGORIES);
-const DEFAULTS = {owner:"letemaalexander3002-alt", repo:"uhuru-os", branch:"master",
+const SAME_ORIGIN = (/^https?:$/.test(location.protocol) && /^\/(console|developers)\/?$/.test(location.pathname)) ? location.origin : '';
+const DEFAULTS = {apiBase: SAME_ORIGIN || 'https://api.store.lsicbusiness.online', owner:"letemaalexander3002-alt", repo:"uhuru-os", branch:"master",
   path:"vendor-catalog/catalog.json", builtin:"config/includes.chroot/usr/share/uhuru-store/catalog.json"};
 const LIM = {name:60, summary:240, keywords:200, iconBytes:60*1024, catalogBytes:900*1024};
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,40}$/;
@@ -106,12 +108,13 @@ const store = {
 function loadCfg(){
   let c = {};
   try { c = JSON.parse(store.get('lgtvc.cfg') || '{}'); } catch(e){}
-  return Object.assign({}, DEFAULTS, c, {token: store.get('lgtvc.tok') || ''});
+  return Object.assign({}, DEFAULTS, c, {token: store.get('lgtvc.tok') || '', admtok: store.get('lgtvc.admtok') || ''});
 }
 function saveCfg(c){
-  const {token, ...rest} = c;
+  const {token, admtok, ...rest} = c;
   store.set('lgtvc.cfg', JSON.stringify(rest));
   store.set('lgtvc.tok', token);
+  store.set('lgtvc.admtok', admtok || '');
 }
 
 /* ====================== Hali ====================== */
@@ -130,7 +133,7 @@ function h(tag, props, ...kids){
     else if (k === 'checked') el.checked = true;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const kid of kids.flat()){
+  for (const kid of kids.flat(Infinity)){
     if (kid == null || kid === false) continue;
     el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   }
@@ -322,6 +325,8 @@ function viewSetup(){
         h('div', {}, field('branch', 'Branch')),
         h('div', {}, field('path', 'Faili la katalogi'))),
       field('builtin', 'Katalogi ya ISO (ya kusoma tu)', 'text', 'Inatumika kuonyesha bidhaa zilizomo ndani ya ISO na kuepuka kugongana majina.'),
+      field('apiBase', 'Anwani ya API ya LGT (Wasanidi na Malipo)', 'url', 'Seva ya backend ya LGT Marketplace. Hutumika kwa sehemu ya Wasanidi tu.'),
+      field('admtok', 'Token ya msimamizi wa API', 'password', 'Inabaki kwenye kifaa hiki tu. Si GitHub token.'),
       h('div', {class: 'row', style: 'margin-top:16px'},
         h('button', {class: 'btn', id: 'save-cfg', text: 'Hifadhi na Jaribu', onclick: () => {
           const nc = {}; for (const k of Object.keys(f)) nc[k] = f[k].value.trim();
@@ -365,7 +370,7 @@ function viewMain(){
     builtPwa.length ? builtPwa.map(a => appRow(Object.assign({}, a, {enabled: true}), {})) : h('div', {class: 'card', text: S.builtins ? 'Hakuna PWA kwenye katalogi ya ISO.' : 'Katalogi ya ISO haikusomeka (angalia njia kwenye ⚙ Mipangilio).'}),
     built.length ? h('div', {class: 'hint', text: 'Pamoja na programu ' + built.filter(a => a.type === 'apt').length + ' za Debian.'}) : null,
     h('div', {class: 'row', style: 'margin-top:16px'}, h('button', {class: 'btn ghost', text: 'Sasisha orodha', onclick: connect})),
-    h('div', {class: 'foot', text: 'Letema Group Tech · Vendor Console 1.0'}));
+    h('div', {class: 'foot', text: 'Letema Group Tech · Vendor Console 2.1'}));
 }
 
 /* ====================== Mhariri ====================== */
@@ -463,12 +468,327 @@ async function afterPublish(){
   render();
 }
 
+/* ====================== Wasanidi na Malipo (msimamizi) ====================== */
+const ADM = {dev: null, tab: 'dev', err: '', int: null, sales: null, form: {}};
+const PROVIDERS = [['', 'Hakuna (malipo ya mkono pekee)'], ['mpesa_tz', 'M-Pesa Tanzania (Vodacom)'], ['selcom', 'Selcom'], ['azampay', 'AzamPay']];
+const TIERS_ADM = [['STARTUP', 'Startup 85/15'], ['STANDARD', 'Standard 80/20'], ['FEATURED', 'Featured 75/25']];
+function bdg(text, tone){ return h('span', {class: 'badge ' + ({ok: '', warn: 'gold', bad: 'off'}[tone] || ''), text: text}); }
+async function admApi(method, path, body){
+  const base = (S.cfg.apiBase || '').replace(/\/+$/, '');
+  const tok = store.get('lgtvc.admtok') || '';
+  if (!base) throw new Err('Weka anwani ya API kwenye ⚙ Mipangilio.');
+  if (!tok) throw new Err('Weka token ya msimamizi kwenye ⚙ Mipangilio.');
+  let res;
+  try {
+    res = await fetch(base + path, {method, cache: 'no-store',
+      headers: Object.assign({'Accept': 'application/json', 'Authorization': 'Bearer ' + tok}, body ? {'Content-Type': 'application/json'} : {}),
+      body: body ? JSON.stringify(body) : undefined});
+  } catch(e){ throw new Err('Hakuna mtandao au API haifikiki.'); }
+  let j = {}; try { j = await res.json(); } catch(e){}
+  if (res.status === 401 || res.status === 403) throw new Err('Token ya msimamizi si sahihi au haina ruhusa.');
+  if (!res.ok) throw new Err(j.message || ('API imerudisha hitilafu ' + res.status));
+  return j;
+}
+async function admLoad(){
+  setBusy('Inapakia wasanidi…');
+  try {
+    ADM.dev = await admApi('GET', '/api/v1/admin/overview'); ADM.err = '';
+    try { ADM.int = await admApi('GET', '/api/v1/admin/integrations'); } catch(e){ ADM.int = null; }
+    try { ADM.sales = await admApi('GET', '/api/v1/admin/sales'); } catch(e){ ADM.sales = null; }
+  }
+  catch(e){ ADM.dev = null; ADM.err = e.message || String(e); }
+  finally { setBusy(''); render(); }
+}
+async function admDo(label, fn){
+  setBusy(label);
+  try { await fn(); toast('Imefanyika.'); await admLoad(); }
+  catch(e){ toast(e.message || String(e), 6000); }
+  finally { setBusy(''); }
+}
+function devName(d, id){ const x = (d.developers || []).find(v => v.id === id); return x ? x.company + ' (' + x.full_name + ')' : id; }
+const APP_ST = {IN_REVIEW: 'Inakaguliwa', APPROVED: 'Imeidhinishwa', REJECTED: 'Imekataliwa', SIGN_PENDING: 'Inasainiwa'};
+function viewAdmin(){
+  const d = ADM.dev;
+  const tabBtn = (id, text) => h('button', {class: 'btn ' + (ADM.tab === id ? 'dark' : 'ghost'), text: text, onclick: () => { ADM.tab = id; render(); }});
+  const head = h('div', {class: 'hero'}, h('h1', {text: 'Wasanidi na Malipo'}),
+    h('p', {text: 'Thibitisha KYC, weka ada, thibitisha malipo ya lipa namba, na lipa wasanidi kwa mkono pale gateway haipo.'}));
+  const tabs = h('div', {class: 'row', style: 'margin-bottom:12px;flex-wrap:wrap;gap:8px'}, tabBtn('dev', 'Wasanidi'), tabBtn('pay', 'Malipo'),
+    tabBtn('app', 'Programu'), tabBtn('prod', 'Bidhaa na Bei'), tabBtn('sales', 'Mauzo'), tabBtn('int', 'Miunganisho'), tabBtn('set', 'Mipangilio ya malipo'), h('button', {class: 'btn ghost', text: 'Pakia upya', onclick: admLoad}));
+  if (!d) return h('div', {}, head, tabs, h('div', {class: 'banner ' + (ADM.err ? 'bad' : 'warn'), text: ADM.err || 'Bonyeza "Pakia upya" kupakia data.'}));
+  let body;
+  if (ADM.tab === 'dev'){
+    body = (d.developers || []).length ? d.developers.map(dev => {
+      const kyc = dev.kyc_status;
+      return h('div', {class: 'card'},
+        h('div', {class: 'app'}, h('div', {class: 'meta'},
+          h('div', {class: 'name', text: dev.company + ' · ' + dev.full_name}),
+          h('div', {class: 'sub', text: dev.email + ' · ' + dev.country + ' · ' + dev.kyc_type + ' ' + (dev.kyc_mask || '')}),
+          h('div', {class: 'sub'}, bdg('KYC ' + kyc, kyc === 'VERIFIED' ? 'ok' : kyc === 'REJECTED' ? 'bad' : 'warn'),
+            bdg('Ada ' + dev.fee_status, dev.fee_status === 'PAID' ? 'ok' : 'warn'), bdg('Kiwango ' + dev.tier, ''),
+            dev.payout ? bdg('Malipo: ' + dev.payout.method + ' ' + dev.payout.account, '') : null))),
+        h('div', {class: 'row', style: 'margin-top:10px;flex-wrap:wrap'},
+          kyc !== 'VERIFIED' ? h('button', {class: 'btn dark', text: 'Thibitisha KYC', onclick: () => admDo('Inathibitisha…', () => admApi('POST', '/api/v1/admin/kyc', {dev_id: dev.id, approve: true}))}) : null,
+          kyc !== 'REJECTED' ? h('button', {class: 'btn danger', text: 'Kataa', onclick: () => { const note = prompt('Sababu ya kukataa (hiari):', '') || ''; admDo('Inakataa…', () => admApi('POST', '/api/v1/admin/kyc', {dev_id: dev.id, approve: false, note: note})); }}) : null,
+          h('button', {class: 'btn ghost', text: 'Ona KYC kamili', onclick: () => {
+            const reason = prompt('Sababu ya kuona KYC kamili (angalau herufi 10). Itarekodiwa kwenye ukaguzi:', '');
+            if (!reason) return;
+            admDo('Inafungua…', async () => { const j = await admApi('POST', '/api/v1/admin/kyc/reveal', {dev_id: dev.id, reason: reason}); alert('Namba ya KYC: ' + j.kyc_number); });
+          }}),
+          h('select', {id: 'tier-' + dev.id}, TIERS_ADM.map(([v, t]) => h('option', {value: v, text: t, selected: dev.tier === v ? true : null}))),
+          h('button', {class: 'btn ghost', text: 'Hifadhi kiwango', onclick: () => admDo('Inahifadhi…', () => admApi('POST', '/api/v1/admin/tier', {dev_id: dev.id, tier: $('#tier-' + dev.id).value}))})));
+    }) : h('div', {class: 'card', text: 'Bado hakuna wasanidi waliojisajili.'});
+  } else if (ADM.tab === 'pay'){
+    const fees = (d.payments || []).filter(p => p.kind === 'REG_FEE' && p.method === 'manual' && p.status !== 'PAID');
+    const pouts = (d.payouts || []).filter(p => p.status === 'QUEUED');
+    body = [
+      h('h2', {text: 'Ada za usajili za lipa namba zinazosubiri'}),
+      fees.length ? fees.map(p => h('div', {class: 'card'},
+        h('div', {class: 'name', text: devName(d, p.dev_id) + ' · TZS ' + p.amount}),
+        h('div', {class: 'sub', text: 'Kumbukumbu: ' + p.id + (p.claimed_ref ? ' · Mteja ameweka: ' + p.claimed_ref : '')}),
+        h('div', {class: 'row', style: 'margin-top:10px'},
+          h('input', {id: 'ext-' + p.id, placeholder: 'Namba ya muamala wa M-Pesa', autocomplete: 'off', style: 'flex:1'}),
+          h('button', {class: 'btn dark', text: 'Thibitisha', onclick: () => {
+            const v = $('#ext-' + p.id).value.trim(); if (!v){ toast('Weka namba ya muamala.'); return; }
+            admDo('Inathibitisha…', () => admApi('POST', '/api/v1/admin/fee/confirm', {ref: p.id, external_ref: v}));
+          }})))) : h('div', {class: 'card', text: 'Hakuna malipo ya lipa namba yanayosubiri.'}),
+      h('h2', {text: 'Malipo ya kumlipa msanidi kwa mkono'}),
+      pouts.length ? pouts.map(p => h('div', {class: 'card'},
+        h('div', {class: 'name', text: devName(d, p.dev_id) + ' · TZS ' + p.amount}),
+        h('div', {class: 'sub', text: p.method + ' → ' + p.account + ' · ombi ' + p.created.slice(0, 10)}),
+        h('div', {class: 'row', style: 'margin-top:10px'},
+          h('input', {id: 'pext-' + p.id, placeholder: 'Kumbukumbu ya malipo uliyofanya', autocomplete: 'off', style: 'flex:1'}),
+          h('button', {class: 'btn dark', text: 'Nimelipa', onclick: () => {
+            const v = $('#pext-' + p.id).value.trim(); if (!v){ toast('Weka kumbukumbu ya malipo.'); return; }
+            admDo('Inarekodi…', () => admApi('POST', '/api/v1/admin/payout/paid', {payout_id: p.id, external_ref: v}));
+          }})))) : h('div', {class: 'card', text: 'Hakuna maombi ya kutoa pesa.'})
+    ];
+  } else if (ADM.tab === 'app'){
+    body = (d.apps || []).length ? d.apps.map(a => h('div', {class: 'card'},
+      h('div', {class: 'name', text: a.name + ' · ' + devName(d, a.dev_id)}),
+      h('div', {class: 'sub', text: (a.package ? a.package + ' ' + (a.version || '') + ' · ' : '') + (a.sha256 ? 'sha256 ' + a.sha256.slice(0, 16) + '…' : (a.url || ''))}),
+      h('div', {class: 'sub'}, bdg(APP_ST[a.status] || a.status, a.status === 'APPROVED' ? 'ok' : a.status === 'REJECTED' ? 'bad' : 'warn'),
+        a.verdict ? bdg('Ukaguzi: ' + a.verdict, a.verdict === 'PASSED_AUTOMATED' ? 'ok' : a.verdict === 'REJECTED' ? 'bad' : 'warn') : null,
+        a.clamav ? bdg('ClamAV: ' + a.clamav, '') : null),
+      (a.reasons && a.reasons.length) ? h('ul', {class: 'sub'}, a.reasons.map(x => h('li', {text: x}))) : null,
+      (a.kind === 'deb' && (a.status === 'IN_REVIEW' || a.status === 'SIGN_PENDING')) ? h('div', {class: 'row', style: 'margin-top:10px;flex-wrap:wrap'},
+        h('input', {id: 'note-' + a.id, placeholder: 'Maelezo (hiari)', style: 'flex:1'}),
+        h('button', {class: 'btn dark', text: 'Idhinisha (GPG)', onclick: () => {
+          let override = false;
+          if (a.verdict === 'NEEDS_REVIEW'){ override = confirm('Hakuna AppArmor profile. Thibitisha kuwa sandbox ya kawaida inatosha?'); if (!override) return; }
+          admDo('Inasaini na kuidhinisha…', () => admApi('POST', '/api/v1/admin/apps/approve', {app_id: a.id, approve: true, override: override, note: $('#note-' + a.id).value.trim()}));
+        }}),
+        h('button', {class: 'btn danger', text: 'Kataa', onclick: () => admDo('Inakataa…', () => admApi('POST', '/api/v1/admin/apps/approve', {app_id: a.id, approve: false, note: $('#note-' + a.id).value.trim()}))})) : null)) :
+      h('div', {class: 'card', text: 'Hakuna programu zilizowasilishwa bado.'});
+  } else if (ADM.tab === 'prod'){
+    body = viewProducts(d);
+  } else if (ADM.tab === 'sales'){
+    body = viewSales();
+  } else if (ADM.tab === 'int'){
+    body = viewIntegrations();
+  } else {
+    const st = d.settings || {};
+    const owner = h('input', {id: 's-owner', value: st.owner_name || '', maxlength: '60'});
+    const lipa = h('input', {id: 's-lipa', value: st.owner_lipa_namba || '', inputmode: 'numeric', placeholder: 'mfano 123456'});
+    const fee = h('input', {id: 's-fee', type: 'number', min: '1', value: st.reg_fee_tzs || ''});
+    const manual = h('input', {id: 's-manual', type: 'checkbox'}); manual.checked = !!st.manual_mode;
+    const prov = h('select', {id: 's-prov'}, PROVIDERS.map(([v, t]) => h('option', {value: v, text: t, selected: (st.default_provider || '') === v ? true : null})));
+    const rate = h('input', {id: 's-rate', value: st.gateway_fee_rate || '0.02'});
+    body = h('div', {class: 'card'},
+      h('h2', {text: 'Ada na lipa namba yako'}),
+      h('label', {for: 's-owner'}, 'Jina litakalotokea kwa wasanidi'), owner,
+      h('label', {for: 's-lipa'}, 'Lipa namba yako (M-Pesa Buy Goods)'), lipa,
+      h('div', {class: 'hint', text: 'Njia ya mbadala wa malipo ya kiotomatiki: wasanidi na wateja wanalipa kwenye namba hii, na unathibitisha hapa.'}),
+      h('label', {for: 's-fee'}, 'Ada ya usajili wa msanidi (TZS)'), fee,
+      h('h2', {text: 'Gateway (malipo ya kiotomatiki)'}),
+      h('label', {for: 's-prov'}, 'Mtoa huduma wa malipo ya kiotomatiki'), prov,
+      h('div', {class: 'hint', text: 'Funguo za API (secret) HAZIHIFADHIWI hapa. Zinawekwa kwenye seva ya API kupitia mazingira (env).'}),
+      h('label', {for: 's-rate'}, 'Ada ya gateway (sehemu, mfano 0.02 = 2%)'), rate,
+      h('label', {class: 'switch'}, manual, 'Washa malipo ya mkono (lipa namba) kama njia mbadala'),
+      h('div', {class: 'row', style: 'margin-top:16px'}, h('button', {class: 'btn', text: 'Hifadhi mipangilio', onclick: () => {
+        const p = {owner_name: owner.value.trim(), owner_lipa_namba: lipa.value.trim(), default_provider: prov.value,
+          gateway_fee_rate: rate.value.trim(), manual_mode: manual.checked};
+        if (fee.value) p.reg_fee_tzs = Number(fee.value);
+        admDo('Inahifadhi…', () => admApi('POST', '/api/v1/admin/settings', p));
+      }})));
+  }
+  return h('div', {}, head, tabs, body);
+}
+
+
+/* ====================== Miunganisho (siri zinaandikwa hapa, hazirudi kwenye skrini) ====================== */
+const ST_TXT = {READY: ['Tayari', 'ok'], PARTIAL: ['Haijakamilika', 'warn'], MISSING: ['Haijawekwa', 'bad']};
+function fmtTime(t){ try { return new Date(t * 1000).toLocaleString('sw-TZ'); } catch(e){ return ''; } }
+function copyText(txt){ try { navigator.clipboard.writeText(txt); toast('Imenakiliwa.'); } catch(e){ prompt('Nakili:', txt); } }
+async function admCall(label, path, body, okMsg){
+  setBusy(label);
+  try { const j = await admApi('POST', path, body); toast(okMsg || 'Imefanyika.'); await admLoad(); return j; }
+  catch(e){ toast(e.message || String(e), 7000); return null; }
+  finally { setBusy(''); }
+}
+function viewIntegrations(){
+  const d = ADM.int;
+  if (!d) return h('div', {class: 'banner warn', text: 'Miunganisho haikupakiwa. Hakikisha API ni toleo jipya (v2.1) kisha bonyeza "Pakia upya".'});
+  const ready = d.readiness || [];
+  const done = ready.filter(r => r.ok).length;
+  const out = [
+    h('div', {class: 'card'}, h('h2', {text: 'Tayari kwa wateja halisi: ' + done + '/' + ready.length}),
+      ready.map(r => h('div', {class: 'sub', style: 'margin:4px 0'}, h('span', {text: r.ok ? '✅ ' : '⬜ '}), r.label, r.ok ? null : h('span', {class: 'hint', text: ' — ' + r.hint}))),
+      h('div', {class: 'row', style: 'flex-wrap:wrap;margin-top:12px'},
+        h('button', {class: 'btn dark', text: 'Pakua akiba iliyosimbwa', onclick: doBackup}),
+        h('button', {class: 'btn ghost', text: 'Zungusha token ya msimamizi', onclick: rotateAdminToken}),
+        h('button', {class: 'btn', id: 'iso-sync', text: 'Hamisha funguo kwenda repo ya ISO', onclick: syncIsoKeys})),
+      h('div', {class: 'hint', text: 'Akiba ina master.key na funguo za GPG. Bila hiyo, siri na KYC haziwezi kurudishwa seva ikiharibika.'}),
+      Object.entries(d.flags || {}).map(([k, v]) => h('label', {class: 'switch'},
+        h('input', {type: 'checkbox', checked: v ? true : null, onchange: ev => admCall('Inahifadhi…', '/api/v1/admin/flags', {name: k, value: ev.target.checked})}), (d.flag_labels || {})[k] || k)))
+  ];
+  for (const it of d.integrations) out.push(integrationCard(it));
+  return out;
+}
+function integrationCard(it){
+  const [stTxt, stTone] = ST_TXT[it.status] || [it.status, ''];
+  const inputs = {};
+  const rows = it.fields.map(f => {
+    let el;
+    if (f.type === 'select') el = h('select', {id: 'i-' + f.key}, f.options.map(([v, t]) => h('option', {value: v, text: t, selected: (f.value || f.default) === v ? true : null})));
+    else if (f.type === 'textarea') el = h('textarea', {id: 'i-' + f.key, placeholder: f.set ? '•••• imehifadhiwa (acha tupu kuiacha)' : '', autocomplete: 'off', spellcheck: 'false'});
+    else el = h('input', {id: 'i-' + f.key, type: f.secret ? 'password' : 'text', value: f.secret ? '' : (f.value || ''), autocomplete: 'off', spellcheck: 'false',
+      placeholder: f.secret ? (f.set ? '•••• imehifadhiwa (acha tupu kuiacha)' : '') : ''});
+    inputs[f.key] = el;
+    return [h('label', {for: 'i-' + f.key}, f.label + (f.optional ? ' (hiari)' : ''), f.secret && f.set ? h('span', {class: 'badge', style: 'margin-left:8px', text: 'imewekwa'}) : null),
+      el, f.help ? h('div', {class: 'hint', text: f.help}) : null];
+  });
+  const test = it.test ? h('div', {class: 'banner ' + (it.test.ok ? 'ok' : 'bad'), style: 'margin-top:10px', text: (it.test.ok ? '✔ ' : '✖ ') + it.test.message + ' · ' + fmtTime(it.test.at)}) : null;
+  const buttons = [];
+  if (it.fields.length) buttons.push(h('button', {class: 'btn', text: 'Hifadhi', onclick: () => {
+    const v = {}; for (const [k, el] of Object.entries(inputs)) v[k] = (el.value || '').trim();
+    admCall('Inahifadhi…', '/api/v1/admin/integrations/save', {id: it.id, values: v}, 'Imehifadhiwa kwa usalama.');
+  }}));
+  if (it.id !== 'system') buttons.push(h('button', {class: 'btn dark', text: 'Jaribu muunganisho', onclick: async () => {
+    setBusy('Inajaribu…');
+    try { const j = await admApi('POST', '/api/v1/admin/integrations/test', {id: it.id}); toast((j.ok ? '✔ ' : '✖ ') + j.message, 8000); await admLoad(); }
+    catch(e){ toast(e.message, 7000); } finally { setBusy(''); }
+  }}));
+  for (const a of it.actions || []) buttons.push(h('button', {class: 'btn ghost', text: a.label, onclick: async () => {
+    let payload = {};
+    if (a.id === 'license.generate' && it.status === 'READY'){
+      if (prompt('Funguo zipo. Kubadilisha kutaharibu leseni zote zilizotolewa. Andika REPLACE kuthibitisha:') !== 'REPLACE') return; payload.confirm = 'REPLACE';
+    }
+    if (a.id === 'gpg.generate' && it.status === 'READY'){
+      if (prompt('Ufunguo upo. Kubadilisha kutahitaji kuhamisha ufunguo mpya kwenye ISO. Andika REPLACE:') !== 'REPLACE') return; payload.confirm = 'REPLACE';
+    }
+    await admCall('Inatengeneza…', '/api/v1/admin/integrations/action', {action: a.id, payload}, 'Imekamilika. Sasa bonyeza "Hamisha funguo kwenda repo ya ISO".');
+  }}));
+  if (it.id === 'gpg') buttons.push(h('button', {class: 'btn ghost', text: 'Ingiza ufunguo ulio nao', onclick: async () => {
+    const armored = prompt('Bandika ufunguo wa siri wa GPG (-----BEGIN PGP PRIVATE KEY BLOCK-----…):'); if (!armored) return;
+    const pass = prompt('Passphrase ya ufunguo (acha tupu ikiwa hauna):') || '';
+    await admCall('Inaingiza…', '/api/v1/admin/integrations/action', {action: 'gpg.import', payload: {armored, passphrase: pass}});
+  }}));
+  const extra = [];
+  if (it.callback_url){
+    extra.push(h('label', {text: 'URL ya callback (nakili kwenye AzamPay portal → Callback URL)'}),
+      h('input', {type: 'text', readonly: 'readonly', value: it.callback_url, onclick: ev => ev.target.select()}),
+      h('div', {class: 'row', style: 'margin-top:6px'}, h('button', {class: 'btn ghost', text: 'Nakili', onclick: () => copyText(it.callback_url)}),
+        h('button', {class: 'btn danger', text: 'Badilisha siri ya URL', onclick: () => { if (confirm('URL ya zamani itaacha kufanya kazi; utahitaji kuiweka tena AzamPay.')) admCall('Inabadilisha…', '/api/v1/admin/integrations/action', {action: 'webhook.rotate', payload: {}}); }})));
+  }
+  if (it.public_key) extra.push(h('label', {text: 'Ufunguo wa umma wa leseni'}), h('code', {text: it.public_key, style: 'word-break:break-all;display:block'}));
+  if (it.fingerprint) extra.push(h('label', {text: 'Fingerprint ya GPG'}), h('code', {text: it.fingerprint, style: 'word-break:break-all;display:block'}));
+  return h('div', {class: 'card'},
+    h('div', {class: 'row'}, h('div', {class: 'grow'}, h('div', {class: 'name', text: it.icon + ' ' + it.label}), h('div', {class: 'hint', text: it.help})), bdg(stTxt, stTone)),
+    rows, extra, test, h('div', {class: 'row', style: 'margin-top:14px;flex-wrap:wrap'}, buttons));
+}
+async function doBackup(){
+  const pw = prompt('Weka nenosiri la akiba (angalau herufi 12). Utalihitaji kurudisha akiba; lihifadhi mahali salama:'); if (!pw) return;
+  setBusy('Inatengeneza akiba…');
+  try {
+    const j = await admApi('POST', '/api/v1/admin/backup', {passphrase: pw});
+    const bin = atob(j.data), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], {type: 'application/octet-stream'})); a.download = j.filename; a.click();
+    toast('Akiba imepakuliwa. Ihifadhi nje ya seva, kisha weka alama "Nimehifadhi akiba".', 9000);
+  } catch(e){ toast(e.message, 7000); } finally { setBusy(''); }
+}
+async function rotateAdminToken(){
+  if (!confirm('Token ya sasa itaacha kufanya kazi. Token mpya itaonekana mara moja tu na itahifadhiwa kwenye kifaa hiki. Endelea?')) return;
+  setBusy('Inazungusha…');
+  try { const j = await admApi('POST', '/api/v1/admin/token/rotate', {}); store.set('lgtvc.admtok', j.token); S.cfg.admtok = j.token; prompt('Token mpya ya msimamizi (iko pia kwenye kifaa hiki). Ihifadhi:', j.token); await admLoad(); }
+  catch(e){ toast(e.message, 7000); } finally { setBusy(''); }
+}
+/* Funguo za leseni + APT zinaandikwa kwenye repo ya ISO kupitia GitHub token uliyoweka (hakuna terminal). */
+async function putRepoFile(path, text, message){
+  const c = S.cfg; const url = '/repos/' + enc(c.owner) + '/' + enc(c.repo) + '/contents/' + enc(path);
+  let sha = null; const cur = await gh('GET', url + '?ref=' + encodeURIComponent(c.branch));
+  if (cur.ok) sha = (await cur.json()).sha; else if (cur.status !== 404) throw await ghError(cur);
+  const body = {message, content: toB64(text), branch: c.branch}; if (sha) body.sha = sha;
+  const res = await gh('PUT', url, body); if (!res.ok) throw await ghError(res);
+}
+async function syncIsoKeys(){
+  if (!S.cfg.token){ toast('Weka GitHub token kwanza (⚙ Mipangilio).', 6000); return; }
+  setBusy('Inahamisha funguo kwenda repo…');
+  try {
+    const k = await (await fetch((S.cfg.apiBase || '').replace(/\/+$/, '') + '/api/v1/public/keys', {cache: 'no-store'})).json();
+    if (!k.license_public_key) throw new Err('Funguo za leseni hazijatengenezwa.');
+    if (!k.apt_gpg_public || !k.apt_line) throw new Err('GPG au anwani ya API (Miunganisho → Anwani ya mfumo) haijawekwa.');
+    const base = 'config/includes.chroot/etc/uhuru/lgt-license-public.key';
+    await putRepoFile(base, k.license_public_key + '\n', 'LGT: ufunguo wa umma wa leseni [skip ci]');
+    await putRepoFile('config/archives/lgt-store.list.chroot', k.apt_line.replace('/usr/share/keyrings/lgt-store.gpg', '/etc/apt/trusted.gpg.d/lgt-store.asc') + '\n', 'LGT: chanzo cha APT [skip ci]');
+    await putRepoFile('config/archives/lgt-store.key.chroot', k.apt_gpg_public, 'LGT: ufunguo wa GPG wa repo');
+    await admApi('POST', '/api/v1/admin/flags', {name: 'iso_synced', value: true});
+    toast('Imeandikwa kwenye repo. Build inayofuata ya ISO itazibeba.', 9000); await admLoad();
+  } catch(e){ toast(e.message || String(e), 8000); } finally { setBusy(''); }
+}
+
+/* ====================== Bidhaa na Bei ====================== */
+function viewProducts(d){
+  const apps = (d.apps || []).filter(a => a.kind === 'deb');
+  const up = h('div', {class: 'card'}, h('h2', {text: 'Ongeza bidhaa rasmi ya Letema (.deb)'}),
+    h('label', {for: 'u-file'}, 'Faili la .deb'), h('input', {type: 'file', id: 'u-file', accept: '.deb'}),
+    h('label', {for: 'u-title'}, 'Jina la duka'), h('input', {type: 'text', id: 'u-title', maxlength: '80'}),
+    h('label', {for: 'u-sum'}, 'Maelezo mafupi'), h('input', {type: 'text', id: 'u-sum', maxlength: '240'}),
+    h('div', {class: 'grid2'}, h('div', {}, h('label', {for: 'u-cat'}, 'Kundi'), h('select', {id: 'u-cat'}, CATEGORIES.map(([i, n]) => h('option', {value: i, text: n})))),
+      h('div', {}, h('label', {for: 'u-price'}, 'Bei (TZS, 0 = bure)'), h('input', {type: 'number', id: 'u-price', min: '0', value: '0'}))),
+    h('div', {class: 'row', style: 'margin-top:12px'}, h('button', {class: 'btn', text: 'Pakia na kukagua', onclick: async () => {
+      const f = $('#u-file').files[0]; if (!f){ toast('Chagua faili la .deb.'); return; }
+      const base = (S.cfg.apiBase || '').replace(/\/+$/, ''); setBusy('Inapakia na kukagua…');
+      try {
+        const res = await fetch(base + '/api/v1/admin/apps/upload', {method: 'POST', body: f, headers: {'Authorization': 'Bearer ' + store.get('lgtvc.admtok'),
+          'Content-Type': 'application/octet-stream', 'X-App-Summary': encodeURIComponent($('#u-sum').value.trim() || 'Programu ya Letema'), 'X-App-Category': $('#u-cat').value,
+          'X-App-Title': encodeURIComponent($('#u-title').value.trim()), 'X-App-Price': String(Number($('#u-price').value) || 0)}});
+        const j = await res.json(); if (!res.ok) throw new Err(j.message || 'Imeshindikana');
+        toast('Ukaguzi: ' + j.verdict + '. Nenda Programu → Idhinisha.', 8000); await admLoad();
+      } catch(e){ toast(e.message || String(e), 7000); } finally { setBusy(''); }
+    }})));
+  const list = apps.length ? apps.map(a => {
+    const pr = h('input', {type: 'number', min: '0', id: 'pr-' + a.id, value: String(a.price_tzs || 0), style: 'max-width:130px'});
+    const bl = h('select', {id: 'bl-' + a.id}, [['ONE_TIME', 'Mara moja'], ['MONTHLY', 'Kila mwezi'], ['YEARLY', 'Kila mwaka']].map(([v, t]) => h('option', {value: v, text: t, selected: (a.billing || 'ONE_TIME') === v ? true : null})));
+    const ls = h('input', {type: 'checkbox', id: 'ls-' + a.id}); ls.checked = a.listed !== false;
+    return h('div', {class: 'card'}, h('div', {class: 'name', text: (a.title || a.name) + ' · ' + (a.package || '') + ' ' + (a.version || '')}),
+      h('div', {class: 'sub'}, bdg(APP_ST[a.status] || a.status, a.status === 'APPROVED' ? 'ok' : 'warn'), a.dev_id === 'LGT' ? bdg('Letema', 'warn') : devName(d, a.dev_id)),
+      h('div', {class: 'row', style: 'margin-top:10px;flex-wrap:wrap'}, 'TZS', pr, bl, h('label', {class: 'switch', style: 'margin:0'}, ls, 'Inaonekana dukani'),
+        h('button', {class: 'btn dark', text: 'Hifadhi bei', onclick: () => admCall('Inahifadhi…', '/api/v1/admin/apps/price', {app_id: a.id, price_tzs: Number(pr.value) || 0, billing: bl.value, listed: ls.checked})})));
+  }) : h('div', {class: 'card', text: 'Hakuna vifurushi bado.'});
+  return [up, h('h2', {text: 'Bei za bidhaa'}), list];
+}
+
+/* ====================== Mauzo ====================== */
+function viewSales(){
+  const s = ADM.sales; if (!s) return h('div', {class: 'banner warn', text: 'Mauzo hayakupakiwa.'});
+  const t = s.totals;
+  return [h('div', {class: 'card'}, h('h2', {text: 'Jumla'}),
+      h('div', {class: 'sub', text: 'Mapato ya jumla: TZS ' + Number(t.gross).toLocaleString() + ' · LGT: TZS ' + Number(t.lgt_share).toLocaleString() + ' · Wasanidi: TZS ' + Number(t.developer_share).toLocaleString() + ' · Leseni: ' + t.licenses})),
+    (s.txns || []).length ? s.txns.map(x => h('div', {class: 'card'}, h('div', {class: 'name', text: x.package + ' · TZS ' + Number(x.amount).toLocaleString()}),
+      h('div', {class: 'sub'}, bdg(x.status, x.status === 'COMPLETED' ? 'ok' : x.status === 'FAILED' || x.status === 'REFUNDED' ? 'bad' : 'warn'), x.ref + ' · ' + x.phone + ' · ' + (x.created || '').slice(0, 16) + (x.error ? ' · ' + x.error : '')),
+      (x.status === 'PAID' || x.status === 'COMPLETED') ? h('div', {class: 'row', style: 'margin-top:8px'}, h('button', {class: 'btn danger', text: 'Rejesha', onclick: () => {
+        const r = prompt('Sababu ya kurejesha (leseni itafutwa; utarudisha fedha kwa mkono):'); if (!r) return;
+        admCall('Inarejesha…', '/api/v1/admin/txn/refund', {ref: x.ref, reason: r});
+      }})) : null)) : h('div', {class: 'card', text: 'Hakuna mauzo bado.'})];
+}
+
 /* ====================== Uchoraji ====================== */
 function render(){
   const app = $('#app'); app.textContent = '';
-  app.append(S.view === 'main' ? viewMain() : viewSetup());
+  app.append(S.view === 'main' ? viewMain() : S.view === 'admin' ? viewAdmin() : viewSetup());
 }
 $('#gear').addEventListener('click', () => { S.view = 'setup'; S.error = ''; render(); });
+$('#adm').addEventListener('click', () => { S.view = 'admin'; render(); admLoad(); });
 
 setPill(false, 'Haijaunganishwa');
 if (S.cfg.token) connect(); else render();

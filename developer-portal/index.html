@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="sw">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3b44">
+<title>LGT Developer Portal · Letema Group Tech</title>
+<style>
+:root{--teal:#0b3b44;--teal2:#137a82;--ink:#0b2f36;--muted:#587274;--gold:#f5c518;--bg:#f3f7f7;--card:#fff;--line:#dfe9e9;--bad:#b42318;--ok:#067647;--warn:#b54708}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+header.top{position:sticky;top:0;z-index:5;background:var(--teal);color:#fff;display:flex;align-items:center;gap:12px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px))}
+.brand{color:var(--gold);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.title{font-size:20px;font-weight:800;line-height:1.1}
+.grow{flex:1;min-width:0}
+.pill{font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);white-space:nowrap}
+.pill.ok{background:#d1fadf;color:#05603a}.pill.off{background:#fee4e2;color:#912018}
+button{font:inherit;cursor:pointer}
+nav.steps{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;background:#fff;border-bottom:1px solid var(--line)}
+nav.steps button{border:0;background:#eef3f3;color:var(--muted);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600;white-space:nowrap}
+nav.steps button.on{background:var(--teal);color:#fff}
+nav.steps button.lock{opacity:.5}
+main{max-width:820px;margin:0 auto;padding:16px 16px 96px}
+.hero{background:linear-gradient(90deg,var(--teal),var(--teal2));color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:16px}
+.hero h1{margin:0 0 4px;font-size:20px}.hero p{margin:0;color:#d6efef;font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(11,59,68,.06)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.grow2{flex:1 1 200px}
+.btn{border:0;border-radius:999px;padding:9px 20px;font-weight:700;background:var(--gold);color:var(--ink)}
+.btn:hover{background:#ffd43b}.btn.dark{background:var(--teal);color:#fff}.btn.ghost{background:transparent;border:1px solid #c9d8d8;color:var(--muted)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+h2{font-size:15px;margin:20px 0 10px;color:var(--teal);text-transform:uppercase;letter-spacing:.04em}
+label{display:block;font-weight:600;font-size:14px;margin:12px 0 4px}
+.hint{font-weight:400;color:var(--muted);font-size:12.5px;margin-top:3px}
+input,select{width:100%;font:inherit;padding:10px 12px;border:1px solid #c9d8d8;border-radius:10px;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:2px solid var(--gold);border-color:var(--gold)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:560px){.grid2{grid-template-columns:1fr}}
+.banner{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.banner.warn{background:#fffaeb;border:1px solid #fedf89;color:var(--warn)}
+.banner.bad{background:#fef3f2;border:1px solid #fecdca;color:var(--bad)}
+.banner.ok{background:#ecfdf3;border:1px solid #abefc6;color:var(--ok)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}.kv b{color:var(--muted);font-weight:600}
+.big{font-size:22px;font-weight:800;color:var(--teal)}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;background:#e6f1f1;color:var(--teal);margin-right:6px}
+.badge.gold{background:var(--gold);color:var(--ink)}.badge.bad{background:#fee4e2;color:#912018}.badge.ok{background:#d1fadf;color:#05603a}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#eef3f3;border-radius:8px;padding:6px 10px;font-size:14px;word-break:break-all}
+.foot{color:var(--muted);font-size:12.5px;text-align:center;margin-top:24px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--teal);color:#fff;padding:12px 18px;border-radius:14px;max-width:92vw;z-index:40;font-size:14px}
+#toast[hidden]{display:none}
+#busy{position:fixed;left:0;right:0;top:0;z-index:30;background:var(--gold);color:var(--ink);font-weight:700;text-align:center;padding:8px;font-size:14px}
+#busy[hidden]{display:none}
+</style>
+</head>
+<body>
+<div id="busy" hidden></div>
+<header class="top">
+  <div class="grow"><div class="brand">Letema Group Tech</div><div class="title">Developer Portal</div></div>
+  <span id="pill" class="pill off">Haujaingia</span>
+  <button id="logout" class="btn ghost" style="display:none" onclick="logout()">Toka</button>
+</header>
+<nav class="steps" id="steps"></nav>
+<main id="app"></main>
+<div id="toast" hidden role="status"></div>
+
+<script>
+'use strict';
+/* ====================== Usanidi ======================
+   API ya backend (haina funguo za malipo hapa). Weka anwani ya seva ya LGT. */
+const DEFAULT_API = (/^https?:$/.test(location.protocol) && /^\/(console|developers)\/?$/.test(location.pathname)) ? location.origin : 'https://api.store.lsicbusiness.online';
+const STEP_NAMES = ['Usajili', 'KYC', 'Ada ya usajili', 'Malipo', 'Programu', 'Mapato'];
+
+/* ====================== Hifadhi (token tu) ====================== */
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+const S = {api: store.get('lgtdp.api') || DEFAULT_API, token: store.get('lgtdp.tok') || '', me: null, step: 0, error: '', pending: null};
+
+/* ====================== DOM ====================== */
+const $ = (s, el=document) => el.querySelector(s);
+function h(tag, props, ...kids){
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(props || {})){
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat()){
+    if (kid == null || kid === false) continue;
+    el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+let toastTimer = null;
+function toast(msg, ms=4500){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, ms); }
+function setBusy(msg){ const b = $('#busy'); b.textContent = msg || ''; b.hidden = !msg; }
+function fmt(n){ return 'TZS ' + Number(n || 0).toLocaleString('en-US', {maximumFractionDigits: 0}); }
+
+/* ====================== API ====================== */
+class ApiErr extends Error {}
+async function api(method, path, body){
+  let res;
+  try {
+    res = await fetch(S.api.replace(/\/+$/, '') + path, {method, cache: 'no-store',
+      headers: Object.assign({'Accept': 'application/json'}, S.token ? {'Authorization': 'Bearer ' + S.token} : {},
+        body ? {'Content-Type': 'application/json'} : {}),
+      body: body ? JSON.stringify(body) : undefined});
+  } catch(e){ throw new ApiErr('Hakuna mtandao au seva haipatikani. Jaribu tena.'); }
+  let j = {}; try { j = await res.json(); } catch(e){}
+  if (res.status === 401){ logout(false); throw new ApiErr('Umetoka. Ingia tena.'); }
+  if (!res.ok) throw new ApiErr(j.message || ('Hitilafu ' + res.status));
+  return j;
+}
+
+/* ====================== Public + upload ghafi ====================== */
+async function loadPublic(){ try { S.pub = await api('GET', '/api/v1/public/settings'); } catch(e){ S.pub = null; } }
+async function apiRaw(path, file, headers){
+  let res;
+  try {
+    res = await fetch(S.api.replace(/\/+$/, '') + path, {method: 'POST', cache: 'no-store',
+      headers: Object.assign({'Authorization': 'Bearer ' + S.token, 'Content-Type': 'application/octet-stream'}, headers), body: file});
+  } catch(e){ throw new ApiErr('Hakuna mtandao. Jaribu tena.'); }
+  let j = {}; try { j = await res.json(); } catch(e){}
+  if (!res.ok) throw new ApiErr(j.message || ('Hitilafu ' + res.status));
+  return j;
+}
+function feeInfo(){
+  const p = S.pub; if (!p) return null;
+  if (!p.registration_open) return h('div', {class: 'banner warn', text: p.reg_fee_tzs ? 'Usajili haupatikani kwa sasa. Jaribu baadaye.' : 'Msimamizi bado hajaweka ada ya usajili.'});
+  const ways = p.providers.filter(x => x.enabled).map(x => x.label).concat(p.manual_enabled ? ['lipa namba ya msimamizi'] : []);
+  return h('div', {class: 'banner ok'}, h('strong', {text: 'Ada ya usajili: ' + fmt(p.reg_fee_tzs)}),
+    ' · Inalipwa kabla ya kuwasilisha programu. Njia: ' + (ways.join(', ') || 'bado hazijawekwa'));
+}
+
+/* ====================== Muunganisho / hali ====================== */
+async function loadMe(){
+  setBusy('Inapakia akaunti yako…');
+  try { S.me = await api('GET', '/api/v1/developer/me'); S.error = ''; setPill(true, S.me.company || S.me.email); S.step = guessStep(); }
+  catch(e){ S.error = e.message; setPill(false, 'Haujaingia'); }
+  finally { setBusy(''); render(); }
+}
+function guessStep(){
+  const m = S.me; if (!m) return 0;
+  if (m.kyc_status !== 'VERIFIED') return 1;
+  if (m.fee_status !== 'PAID') return 2;
+  if (!m.payout) return 3;
+  return 4;
+}
+function setPill(ok, text){ const p = $('#pill'); p.className = 'pill ' + (ok ? 'ok' : 'off'); p.textContent = text; $('#logout').style.display = ok ? '' : 'none'; }
+function logout(show=true){ store.del('lgtdp.tok'); S.token = ''; S.me = null; S.step = 0; setPill(false, 'Haujaingia'); if (show) toast('Umetoka.'); render(); }
+/* Hatua zimefungwa kwa mtiririko: huwezi kufungua hatua inayofuata kabla ya iliyotangulia. */
+function unlocked(i){
+  if (!S.me) return i === 0;
+  if (i === 0) return true;
+  if (i === 1) return true;
+  if (i === 2) return S.me.kyc_status === 'VERIFIED';
+  if (i === 3) return S.me.fee_status === 'PAID';
+  if (i === 4) return !!S.me.payout;
+  if (i === 5) return !!S.me.payout;
+  return false;
+}
+
+/* ====================== Hatua (stepper) ====================== */
+function renderSteps(){
+  const nav = $('#steps'); nav.textContent = '';
+  STEP_NAMES.forEach((name, i) => {
+    const ok = unlocked(i);
+    nav.append(h('button', {class: (S.step === i ? 'on ' : '') + (ok ? '' : 'lock'), onclick: () => { if (ok){ S.step = i; render(); } else toast('Kamilisha hatua za awali kwanza.'); }}, (i + 1) + '. ' + name));
+  });
+}
+
+/* ====================== Skrini ya kuingia / usajili ====================== */
+function viewAuth(){
+  const f = {};
+  const field = (key, label, type, hint, value) => {
+    f[key] = h('input', {type: type || 'text', id: 'f-' + key, value: value || '', autocomplete: 'off', spellcheck: 'false'});
+    return h('div', {}, h('label', {for: 'f-' + key}, label), f[key], hint ? h('div', {class: 'hint', text: hint}) : null);
+  };
+  const apiIn = h('input', {id: 'f-api', value: S.api, spellcheck: 'false', autocomplete: 'off'});
+  const apiNow = () => { const v = apiIn.value.trim() || DEFAULT_API; S.api = v; store.set('lgtdp.api', v); };
+  const submitLogin = async () => {
+    apiNow();
+    const email = f.email.value.trim(), pw = f.password.value;
+    if (!email || !pw){ S.error = 'Weka barua pepe na nenosiri.'; return render(); }
+    setBusy('Inaingia…');
+    try { const j = await api('POST', '/api/v1/developer/login', {email, password: pw}); S.token = j.token; store.set('lgtdp.tok', j.token); S.error = ''; await loadMe(); }
+    catch(e){ S.error = e.message; render(); } finally { setBusy(''); }
+  };
+  const submitReg = async () => {
+    apiNow();
+    if (S.pub && !S.pub.registration_open){ S.error = 'Usajili haupatikani kwa sasa.'; return render(); }
+    const body = {email: f.email.value.trim(), password: f.password.value, full_name: f.full_name.value.trim(),
+      company: f.company.value.trim(), phone: f.phone.value.replace(/[\s+-]/g, ''), country: f.country.value,
+      kyc_type: f.kyc_type.value, kyc_number: f.kyc_number.value.trim()};
+    if (!body.email || body.password.length < 12 || !body.full_name || !body.company || !body.kyc_number){
+      S.error = 'Jaza sehemu zote. Nenosiri lina angalau herufi 12.'; return render(); }
+    setBusy('Inasajili…');
+    try { await api('POST', '/api/v1/developer/register', body); toast('Usajili umepokelewa. Ingia kisha tutaendelea na KYC.'); S.error = ''; S.mode = 'login'; render(); }
+    catch(e){ S.error = e.message; render(); } finally { setBusy(''); }
+  };
+  const reg = S.mode === 'register';
+  const box = h('div', {class: 'card'},
+    h('div', {}, h('label', {for: 'f-api'}, 'Anwani ya API (seva ya LGT)'), apiIn, h('div', {class: 'hint', text: 'Acha kama ilivyo isipokuwa msimamizi amekuelekeza vingine.'})),
+    field('email', 'Barua pepe', 'email'),
+    field('password', 'Nenosiri (herufi 12 au zaidi)', 'password'),
+    reg ? field('full_name', 'Jina kamili (kama kwenye kitambulisho)') : null,
+    reg ? field('company', 'Jina la kampuni au chapa yako') : null,
+    reg ? field('phone', 'Namba ya simu (Mobile Money)', 'tel', 'Mfano: 255754000000') : null,
+    reg ? h('div', {}, h('label', {for: 'f-country'}, 'Nchi'), f.country = h('select', {id: 'f-country'},
+      [['TZA','Tanzania'],['KEN','Kenya'],['UGA','Uganda'],['RWA','Rwanda'],['BDI','Burundi'],['COD','DRC']].map(([v,t]) => h('option', {value: v, text: t})))) : null,
+    reg ? h('div', {}, h('label', {for: 'f-kyc_type'}, 'Aina ya kitambulisho'), f.kyc_type = h('select', {id: 'f-kyc_type'},
+      [['NIDA','NIDA'],['TIN','TIN (TRA)'],['BRELA','Cheti cha BRELA (kampuni)'],['PASSPORT','Pasi ya kusafiria'],['NATIONAL_ID','Kitambulisho cha taifa (EAC)']].map(([v,t]) => h('option', {value: v, text: t})))) : null,
+    reg ? field('kyc_number', 'Namba ya kitambulisho') : null,
+    S.error ? h('div', {class: 'banner bad', text: S.error}) : null,
+    h('div', {class: 'row', style: 'margin-top:14px'},
+      h('button', {class: 'btn', onclick: reg ? submitReg : submitLogin, text: reg ? 'Jisajili' : 'Ingia'}),
+      h('button', {class: 'btn ghost', text: reg ? 'Nina akaunti tayari' : 'Sina akaunti? Jisajili', onclick: () => { S.mode = reg ? 'login' : 'register'; S.error = ''; render(); }})));
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Karibu, msanidi wa LGT Store'}),
+      h('p', {text: 'Sajili programu zako kwa wateja wa Uhuru OS Tanzania na EAC. Ada ya usajili inalipwa kwanza, kisha unaweka taarifa za malipo.'})),
+    feeInfo(),
+    box,
+    h('div', {class: 'foot', text: 'Taarifa zako za KYC zinatumika kwa uthibitisho pekee.'}));
+}
+
+/* ====================== KYC ====================== */
+function viewKyc(){
+  const m = S.me, st = m.kyc_status;
+  const badge = st === 'VERIFIED' ? h('span', {class: 'badge ok', text: 'Imethibitishwa'}) : st === 'REJECTED' ? h('span', {class: 'badge bad', text: 'Imekataliwa'}) : h('span', {class: 'badge gold', text: 'Inasubiri ukaguzi'});
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Uthibitisho wa KYC'}), h('p', {text: 'Timu ya LGT inakagua kitambulisho chako. Ukikamilika, utaendelea na ada ya usajili.'})),
+    st === 'REJECTED' ? h('div', {class: 'banner bad'}, 'KYC imekataliwa.', m.kyc_note ? ' Sababu: ' + m.kyc_note : ' Wasiliana na LGT Store.') : null,
+    h('div', {class: 'card'}, h('div', {class: 'kv'},
+      h('b', {text: 'Hali'}), h('span', {}, badge),
+      h('b', {text: 'Aina ya kitambulisho'}), h('span', {text: m.kyc_type}),
+      h('b', {text: 'Namba'}), h('span', {text: m.kyc_masked || '••••'}))),
+    h('div', {class: 'row'}, h('button', {class: 'btn ghost', text: 'Angalia tena', onclick: loadMe})));
+}
+
+/* ====================== Ada ya usajili (lango) ====================== */
+function viewFee(){
+  const m = S.me, cfg = m.settings || {};
+  if (m.fee_status === 'PAID') return h('div', {}, h('div', {class: 'banner ok', text: 'Ada ya usajili imelipwa ✔. Sasa weka taarifa za malipo.'}),
+    h('button', {class: 'btn dark', text: 'Endelea →', onclick: () => { S.step = 3; render(); }}));
+  const pend = m.pending_fee;
+  const enabled = ((S.pub && S.pub.providers) || []).filter(x => x.enabled);
+  const provSel = h('select', {id: 'fee-prov'}, enabled.map(x => h('option', {value: x.id, text: x.label})));
+  const wallet = h('select', {id: 'fee-wallet'}, [['Mpesa','M-Pesa'],['Airtel','Airtel Money'],['Tigo','Tigo Pesa'],['Halopesa','Halopesa'],['Azampesa','Azampesa']].map(([v,t]) => h('option', {value: v, text: t})));
+  const gw = enabled.length ? h('div', {class: 'card'},
+    h('h2', {text: 'Lipa kwa mtoa huduma (otomatiki)'}),
+    h('label', {for: 'fee-prov'}, 'Mtoa huduma'), provSel,
+    h('label', {for: 'fee-wallet'}, 'Wallet ya kulipia (kwa AzamPay)'), wallet,
+    h('label', {for: 'fee-phone'}, 'Namba ya simu ya kulipia'),
+    h('input', {id: 'fee-phone', type: 'tel', value: m.phone || '', placeholder: '255754000000', autocomplete: 'off'}),
+    h('div', {class: 'hint', text: 'Utapokea ombi kwenye simu. Thibitisha kwa PIN; kisha bofya "Angalia tena".'}),
+    pend && pend.method === 'gateway' ? h('div', {class: 'banner warn', text: 'Ombi limetumwa (' + (pend.status || 'PENDING') + '). Hali itabadilika baada ya malipo kuthibitishwa.'}) : null,
+    h('div', {class: 'row', style: 'margin-top:12px'},
+      h('button', {class: 'btn', text: 'Lipa ' + fmt(cfg.reg_fee_tzs), onclick: async () => {
+        const prov = $('#fee-prov').value;
+        setBusy('Inaomba malipo…');
+        try { S.me.pending_fee = await api('POST', '/api/v1/developer/fee/request', {method: 'gateway', provider: prov,
+              wallet: prov === 'azampay' ? $('#fee-wallet').value : undefined, phone: $('#fee-phone').value.replace(/[\s+-]/g, '')});
+          toast('Ombi limetumwa. Thibitisha kwa PIN kwenye simu.'); render(); }
+        catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }}),
+      h('button', {class: 'btn ghost', text: 'Angalia tena', onclick: loadMe}))) : null;
+  const manualInfo = h('div', {class: 'kv'},
+    h('b', {text: 'Lipa namba'}), h('span', {class: 'code', text: cfg.lipa_namba}),
+    h('b', {text: 'Jina'}), h('span', {text: cfg.owner_name || 'Letema Group Tech'}),
+    h('b', {text: 'Kiasi'}), h('span', {text: fmt(cfg.reg_fee_tzs)}),
+    h('b', {text: 'Kumbukumbu'}), h('span', {class: 'code', text: pend && pend.method === 'manual' ? pend.id : 'Bonyeza "Nimelipa" kupata kumbukumbu'}));
+  const manualClaim = pend && pend.method === 'manual'
+    ? h('div', {}, h('label', {for: 'fee-ref'}, 'Namba ya muamala wa M-Pesa (kutoka SMS)'),
+        h('input', {id: 'fee-ref', type: 'text', placeholder: 'mfano QWE123ABC', autocomplete: 'off', spellcheck: 'false'}),
+        h('div', {class: 'hint', text: 'Msimamizi atathibitisha malipo yako; hali itabadilika hapa.'}),
+        h('button', {class: 'btn dark', style: 'margin-top:12px', text: 'Tuma namba ya muamala', onclick: async () => {
+          const ref = $('#fee-ref').value.trim(); if (!ref){ toast('Weka namba ya muamala.'); return; }
+          setBusy('Inatuma…'); try { await api('POST', '/api/v1/developer/fee/claim', {ref: pend.id, external_ref: ref}); toast('Imepokelewa. Msimamizi atathibitisha.'); await loadMe(); }
+          catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }}))
+    : h('button', {class: 'btn', style: 'margin-top:8px', text: 'Nimelipa', onclick: async () => {
+        setBusy('Inatengeneza kumbukumbu…'); try { S.me.pending_fee = await api('POST', '/api/v1/developer/fee/request', {method: 'manual'}); render(); }
+        catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }});
+  const manual = cfg.lipa_namba ? h('div', {class: 'card'}, h('h2', {text: 'Lipa namba ya msimamizi (mkono)'}), manualInfo, manualClaim) : null;
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Ada ya usajili: ' + fmt(cfg.reg_fee_tzs)}), h('p', {text: 'Hii inalipwa mara moja. Bila hii huwezi kuweka taarifa za malipo wala kuchapisha programu.'})),
+    cfg.reg_fee_tzs ? null : h('div', {class: 'banner warn', text: 'Msimamizi bado hajaweka ada ya usajili.'}),
+    gw, manual,
+    !gw && !manual ? h('div', {class: 'banner warn', text: 'Hakuna njia ya malipo iliyowezeshwa bado. Wasiliana na LGT Store.'}) : null);
+}
+
+/* ====================== Mipangilio ya malipo ya msanidi ====================== */
+function viewPayout(){
+  const m = S.me, cur = m.payout || {};
+  const method = h('select', {id: 'po-method'}, [['MOBILE_MONEY','Mobile Money (otomatiki kupitia gateway)'],['BANK','Akaunti ya benki'],['MANUAL','Malipo ya mkono (msimamizi analipa)']]
+    .map(([v,t]) => h('option', {value: v, text: t, selected: cur.method === v ? true : null})));
+  const acct = h('input', {id: 'po-acct', type: 'text', value: cur.account || '', autocomplete: 'off', spellcheck: 'false', placeholder: 'Mobile Money: 255754000000'});
+  const hint = h('div', {class: 'hint', text: 'Pesa zinatumwa kwenye akaunti hii. Kiwango cha chini cha kutoa ni TZS 20,000. Mapato yanakaa escrow siku 7 (au 14 kwa kiwango cha Featured).'});
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Taarifa za malipo'}), h('p', {text: 'Weka njia ya kupokea mapato yako. Unaweza kubadilisha baadaye.'})),
+    h('div', {class: 'card'},
+      h('label', {for: 'po-method'}, 'Njia ya kupokea'), method,
+      h('label', {for: 'po-acct'}, 'Namba au akaunti'), acct, hint,
+      h('div', {class: 'row', style: 'margin-top:14px'}, h('button', {class: 'btn', text: 'Hifadhi taarifa', onclick: async () => {
+        setBusy('Inahifadhi…');
+        try { await api('POST', '/api/v1/developer/payout', {method: $('#po-method').value, account: $('#po-acct').value.replace(/[\s+-]/g, '')});
+          toast('Taarifa za malipo zimehifadhiwa.'); await loadMe(); }
+        catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }}))));
+}
+
+/* ====================== Programu ====================== */
+const APP_STATUS = {IN_REVIEW: 'Inakaguliwa', APPROVED: 'Imeidhinishwa', REJECTED: 'Imekataliwa', SIGN_PENDING: 'Inasainiwa'};
+const VERDICT_TEXT = {PASSED_AUTOMATED: 'Imepita ukaguzi wa kiotomatiki; inasubiri idhini ya LGT.',
+  NEEDS_REVIEW: 'Inasubiri mapitio: hakuna AppArmor profile.', SCAN_UNAVAILABLE: 'Ukaguzi wa virusi haukukamilika; utarudiwa.',
+  REJECTED: 'Imekataliwa na ukaguzi.'};
+function viewApps(){
+  const apps = (S.me.apps || []);
+  const r = S.uploadResult;
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Programu zangu'}), h('p', {text: 'Pakia kifurushi cha .deb au wasilisha PWA. Kila .deb inakaguliwa (muundo, hati za usakinishaji, ClamAV, AppArmor) kabla ya idhini.'})),
+    h('div', {class: 'card'}, h('h2', {text: 'Pakia kifurushi cha .deb'}),
+      h('label', {for: 'up-file'}, 'Faili la .deb'), h('input', {id: 'up-file', type: 'file', accept: '.deb'}),
+      h('label', {for: 'up-sum'}, 'Maelezo mafupi'), h('input', {id: 'up-sum', placeholder: 'Maelezo ya Kiswahili (mstari mmoja)', maxlength: '240'}),
+      h('label', {for: 'up-cat'}, 'Kundi'), h('select', {id: 'up-cat'}, [['letema','Bidhaa za Letema'],['office','Ofisi'],['internet','Mtandao'],['graphics','Picha'],['media','Sauti/Video'],['education','Elimu'],['tools','Zana za Mfumo']].map(([v,t]) => h('option', {value: v, text: t}))),
+      h('div', {class: 'row', style: 'margin-top:14px'}, h('button', {class: 'btn', text: 'Pakia na ukaguzi', onclick: async () => {
+        const f = $('#up-file').files[0];
+        if (!f){ toast('Chagua faili la .deb.'); return; }
+        const sum = $('#up-sum').value.trim();
+        if (!sum){ toast('Weka maelezo mafupi.'); return; }
+        setBusy('Inapakia na kukaguliwa…');
+        try { S.uploadResult = await apiRaw('/api/v1/developer/apps/upload', f, {'X-App-Summary': encodeURIComponent(sum), 'X-App-Category': $('#up-cat').value});
+          toast('Imepokelewa.'); await loadMe(); }
+        catch(e){ toast(e.message, 7000); } finally { setBusy(''); } }})),
+      r ? h('div', {class: 'banner ' + (r.verdict === 'REJECTED' ? 'bad' : r.verdict === 'PASSED_AUTOMATED' ? 'ok' : 'warn')},
+        h('strong', {text: VERDICT_TEXT[r.verdict] || r.verdict}),
+        r.reasons && r.reasons.length ? h('ul', {}, r.reasons.map(x => h('li', {text: x}))) : null) : null),
+    h('div', {class: 'card'}, h('h2', {text: 'Wasilisha PWA'}),
+      h('label', {for: 'ap-name'}, 'Jina'), h('input', {id: 'ap-name', placeholder: 'Jina la programu'}),
+      h('label', {for: 'ap-url'}, 'URL (https)'), h('input', {id: 'ap-url', type: 'url', value: 'https://', placeholder: 'https://'}),
+      h('label', {for: 'ap-sum'}, 'Maelezo'), h('input', {id: 'ap-sum', placeholder: 'Maelezo mafupi (mstari mmoja)'}),
+      h('div', {class: 'row', style: 'margin-top:14px'}, h('button', {class: 'btn', text: 'Wasilisha kwa ukaguzi', onclick: async () => {
+        setBusy('Inawasilisha…');
+        try { await api('POST', '/api/v1/developer/apps', {name: $('#ap-name').value.trim(), url: $('#ap-url').value.trim(), summary: $('#ap-sum').value.trim()});
+          toast('Imewasilishwa. Ukaguzi unachukua siku chache.'); await loadMe(); }
+        catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }}))),
+    h('h2', {text: 'Hali ya programu zako'}),
+    apps.length ? apps.map(a => h('div', {class: 'card'}, h('div', {class: 'row'},
+      h('div', {class: 'grow2'}, h('strong', {text: a.name}), h('div', {class: 'hint', text: a.url || (a.package ? a.package + ' ' + (a.version || '') : '')})),
+      h('span', {class: 'badge' + (a.status === 'APPROVED' ? ' ok' : a.status === 'REJECTED' ? ' bad' : ''), text: APP_STATUS[a.status] || a.status})),
+      a.reviewer_note ? h('div', {class: 'hint', text: 'Maelezo ya mkaguzi: ' + a.reviewer_note}) : null)) :
+      h('div', {class: 'card', text: 'Bado hujawasilisha programu.'}));
+}
+
+/* ====================== Mapato ====================== */
+function viewRevenue(){
+  const b = S.me.balances || {escrow: 0, available: 0, queued: 0};
+  const payouts = S.me.payouts || [];
+  return h('div', {},
+    h('div', {class: 'hero'}, h('h1', {text: 'Mapato yako'}), h('p', {text: 'Salio linaloonekana hapa ni baada ya ada ya gateway na gawio la LGT.'})),
+    h('div', {class: 'card'}, h('div', {class: 'kv'},
+      h('b', {text: 'Escrow (inasubiri)'}), h('span', {class: 'big', text: fmt(b.escrow)}),
+      h('b', {text: 'Linapatikana'}), h('span', {class: 'big', text: fmt(b.available)}),
+      h('b', {text: 'Imeombwa / imelipwa'}), h('span', {text: fmt(b.queued)}))),
+    h('div', {class: 'row'}, h('button', {class: 'btn', text: 'Omba kutoa pesa', disabled: b.available < 20000 ? true : null, onclick: async () => {
+      setBusy('Inaomba…'); try { await api('POST', '/api/v1/developer/payout/request', {}); toast('Ombi la kutoa pesa limepokelewa.'); await loadMe(); }
+      catch(e){ toast(e.message, 6000); } finally { setBusy(''); } }}),
+      b.available < 20000 ? h('span', {class: 'hint', text: 'Kiwango cha chini: TZS 20,000'}) : null),
+    h('h2', {text: 'Maombi ya kutoa pesa'}),
+    payouts.length ? payouts.map(p => h('div', {class: 'card row'}, h('div', {class: 'grow2', text: fmt(p.amount) + ' · ' + p.created.slice(0, 10)}),
+      h('span', {class: 'badge' + (p.status === 'PAID' ? ' ok' : ''), text: p.status === 'PAID' ? 'Imelipwa' : 'Inasubiri'}))) :
+      h('div', {class: 'card', text: 'Hakuna maombi bado.'}));
+}
+
+/* ====================== Uchoraji ====================== */
+function render(){
+  const app = $('#app'); app.textContent = '';
+  renderSteps();
+  if (!S.token || !S.me){ app.append(viewAuth()); }
+  else {
+    const views = [viewKyc, viewFee, viewPayout, viewApps, viewRevenue];
+    const i = S.step;
+    if (i === 0) app.append(viewKyc()); else if (i === 1) app.append(viewKyc()); else app.append(views[Math.min(i - 1, views.length - 1)]());
+  }
+  if (S.error && !S.token) { /* kosa linaonyeshwa ndani ya fomu */ }
+}
+$('#steps').addEventListener('click', e => e.stopPropagation());
+
+/* ====================== Kuanza ====================== */
+S.mode = 'login';
+setPill(false, 'Haujaingia');
+loadPublic().then(() => (S.token ? loadMe() : render()));
+</script>
+</body>
+</html>
