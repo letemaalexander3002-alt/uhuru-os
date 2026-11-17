@@ -1,0 +1,40 @@
+#!/bin/sh
+# uhuru-v180 - 9995: locale ya Tanzania, saa za Dar es Salaam, vyeti vya Serikali, LibreOffice defaults.
+# Haivunji build: kila hatua ina '|| true' isipokuwa uandishi wa faili za msingi.
+sed -i 's/^# *en_TZ.UTF-8/en_TZ.UTF-8/' /etc/locale.gen || true
+sed -i 's/^# *sw_TZ.UTF-8/sw_TZ.UTF-8/' /etc/locale.gen || true
+locale-gen || true
+ln -sf /usr/share/zoneinfo/Africa/Dar_es_Salaam /etc/localtime
+echo "Africa/Dar_es_Salaam" > /etc/timezone
+
+# Vyeti vya Serikali: vinaingia tu ikiwa faili ya .crt ipo kwenye tz-gov
+if [ -d /usr/local/share/ca-certificates/tz-gov ] && ls /usr/local/share/ca-certificates/tz-gov/*.crt >/dev/null 2>&1; then
+    update-ca-certificates || true
+fi
+
+# LibreOffice: Debian inasoma .xcd kutoka share/registry (si /etc). Hatugusi main.xcd; tunaongeza faili yetu tu.
+LOREG=/usr/lib/libreoffice/share/registry
+if [ -d "$LOREG" ]; then
+cat > "$LOREG/uhuru-defaults.xcd" <<'UHURU_XCD_EOF'
+<?xml version="1.0"?>
+<oor:data xmlns:oor="http://openoffice.org/2001/registry">
+  <oor:component-data oor:name="Setup" oor:package="org.openoffice">
+    <node oor:name="Office">
+      <node oor:name="Factories">
+        <node oor:name="com.sun.star.text.TextDocument">
+          <prop oor:name="ooSetupFactoryDefaultFilter"><value>MS Word 2007 XML</value></prop>
+        </node>
+        <node oor:name="com.sun.star.sheet.SpreadsheetDocument">
+          <prop oor:name="ooSetupFactoryDefaultFilter"><value>Calc MS Excel 2007 XML</value></prop>
+        </node>
+        <node oor:name="com.sun.star.presentation.PresentationDocument">
+          <prop oor:name="ooSetupFactoryDefaultFilter"><value>Impress MS PowerPoint 2007 XML</value></prop>
+        </node>
+      </node>
+    </node>
+  </oor:component-data>
+</oor:data>
+UHURU_XCD_EOF
+fi
+echo "uhuru-v180: locale/saa/libreoffice-defaults zimewekwa"
+exit 0

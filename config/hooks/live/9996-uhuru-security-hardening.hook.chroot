@@ -1,0 +1,8 @@
+#!/bin/sh
+# uhuru-v180 - 9996: auditd (e-GA), sera ya nywila (pwquality), sera ya USB ya msingi.
+# Sera ya USB haizuii chochote kwa sasa (USB_MODE=allow-scan); utekelezaji ni awamu ya B.
+systemctl enable auditd >/dev/null 2>&1 || true
+mkdir -p /etc/uhuru
+chmod 0644 /etc/security/pwquality.conf /etc/audit/rules.d/uhuru-ega.rules /etc/uhuru/usb-policy.conf 2>/dev/null || true
+echo "uhuru-v180: pwquality $(grep -c '^minlen' /etc/security/pwquality.conf 2>/dev/null) minlen, auditd rules=$(ls /etc/audit/rules.d 2>/dev/null | wc -l)"
+exit 0

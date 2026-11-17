@@ -157,8 +157,27 @@ def check_privacy():
     return ("nm", "Faragha ya mtandao", "bad", "Mipangilio ya faragha haijawekwa.", None)
 
 
+def check_usb():
+    pol = read("/etc/uhuru/usb-policy.conf")
+    if not pol:
+        return ("usbdlp", "Ulinzi wa USB (DLP)", "info", "Sera ya USB haijawekwa (chaguo-msingi: ruhusu zote + skani).", None)
+    mode = "allow-scan"
+    for line in pol.split("\n"):
+        line = line.strip()
+        if line.startswith("USB_MODE="):
+            mode = line.split("=", 1)[1].strip() or mode
+    if mode == "allow-scan":
+        return ("usbdlp", "Ulinzi wa USB (DLP)", "ok", "Hali: ruhusu zote + skani ya virusi.", None)
+    if mode == "read-only":
+        rules = read("/etc/udev/rules.d/99-uhuru-usb-dlp.rules")
+        if "setro" in rules:
+            return ("usbdlp", "Ulinzi wa USB (DLP)", "ok", "Hali: soma tu (read-only) - kanuni zimewekwa.", None)
+        return ("usbdlp", "Ulinzi wa USB (DLP)", "bad", "Hali ya soma-tu imechaguliwa lakini kanuni hazijawekwa (uhuru-usb-dlp).", None)
+    return ("usbdlp", "Ulinzi wa USB (DLP)", "warn", "Hali '%s' bado haijatekelezwa; haizuii chochote." % mode, None)
+
+
 CHECKS = [check_firewall, check_apparmor, check_sysctl, check_updates, check_disk, check_secureboot,
-          check_flash, check_av, check_privacy]
+          check_flash, check_av, check_privacy, check_usb]
 
 
 def collect():

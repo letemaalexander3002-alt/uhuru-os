@@ -83,6 +83,55 @@ button.lgt-soon { background: #eef3f3; color: #7d9496; border-radius: 999px; pad
 # ------------------------------------------------------------------ katalogi
 
 
+# ------------------------------------------------------------------ malipo (Awamu C, v18.0)
+# Moduli za malipo zikikosekana, duka linaendelea. Bidhaa yenye bei bila leseni halali inabaki imefungwa (fail-closed).
+try:
+    import lgt_checkout as _chk
+    import uhuru_license as _lic
+    PAY_OK = True
+except Exception:
+    _chk = None
+    _lic = None
+    PAY_OK = False
+LICENSE_DIR_SYS = os.environ.get("UHURU_LICENSE_DIR", "/etc/uhuru/licenses")
+PAY_ERRORS = {
+    "MUDA_UMEISHA": "Muda umeisha. Malipo hayakuthibitishwa.",
+    "MTANDAO_HAUPATIKANI": "Hakuna mtandao. Unganisha mtandao kisha ujaribu tena.",
+    "MALIPO_HAYAKUKAMILIKA": "Malipo hayakukamilika au yamekataliwa.",
+    "LEESENI_HAIJAHIFADHIWA": "Leseni haikuhifadhiwa. Ruhusa ya msimamizi inahitajika.",
+    "NAMBA_SI_SAHIHI": "Namba ya simu si sahihi. Tumia 07XXXXXXXX au +255XXXXXXXXX.",
+}
+
+
+def price_of(app):
+    try:
+        return int(app.get("price_tzs", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def license_name(app):
+    return app.get("package") or app["id"]
+
+
+def is_licensed(app):
+    if not PAY_OK:
+        return False
+    try:
+        return bool(_lic.verify_app_license(license_name(app))["valid"])
+    except Exception:
+        return False
+
+
+def needs_purchase(app):
+    """Bidhaa yenye bei bila leseni halali lazima ilipiwe. Bila moduli ya malipo: imefungwa."""
+    return price_of(app) > 0 and not is_licensed(app)
+
+
+def price_label(app):
+    return "Nunua \u2022 TZS {:,}".format(price_of(app))
+
+
 def _read_json(path):
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
@@ -833,7 +882,8 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
                 ctx.add_class("lgt-soon")
                 self.btn.set_sensitive(False)
             else:
-                self.btn.set_label("Sakinisha")
+                paid = needs_purchase(self.app)
+                self.btn.set_label(price_label(self.app) if paid else "Sakinisha")
                 ctx.add_class("lgt-install")
 
         def set_busy(self, busy, text=""):
@@ -1120,6 +1170,8 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
                 self.message(Gtk.MessageType.ERROR, "Imeshindikana kufungua %s" % app["name"], str(exc))
 
         def install(self, card, app):
+            if needs_purchase(app):
+                return self.purchase(card, app)
             if app["type"] == "pwa":
                 try:
                     pwa_install(app)
@@ -1128,6 +1180,88 @@ def build_ui_classes(Gtk, Gdk, GLib, Pango, GdkPixbuf, Gio):
                 self.reload_state()
                 return
             self._run(card, ["apt-get", "install", "-y", app["package"]], "Inasakinisha\u2026")
+
+        def purchase(self, card, app):
+            if not PAY_OK:
+                self.message(Gtk.MessageType.ERROR, "Malipo hayapatikani", "Moduli ya malipo haipo kwenye mfumo huu.")
+                return
+            dlg = Gtk.Dialog(title="Nunua %s" % app["name"], transient_for=self, modal=True)
+            dlg.add_buttons("Ghairi", Gtk.ResponseType.CANCEL, "Lipa", Gtk.ResponseType.OK)
+            box = dlg.get_content_area()
+            box.set_spacing(10)
+            box.set_margin_top(14)
+            box.set_margin_bottom(6)
+            box.set_margin_start(18)
+            box.set_margin_end(18)
+            box.pack_start(Gtk.Label(label="Bei: TZS {:,}".format(price_of(app))), False, False, 0)
+            box.pack_start(Gtk.Label(label="Ingiza namba ya M-Pesa ya kulipia:"), False, False, 0)
+            entry = Gtk.Entry()
+            entry.set_placeholder_text("07XXXXXXXX")
+            entry.set_activates_default(True)
+            box.pack_start(entry, False, False, 0)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            dlg.show_all()
+            resp = dlg.run()
+            raw = entry.get_text()
+            dlg.destroy()
+            if resp != Gtk.ResponseType.OK:
+                return
+            try:
+                phone = _chk.normalize_msisdn(raw)
+            except _chk.CheckoutError:
+                self.message(Gtk.MessageType.ERROR, "Namba si sahihi", PAY_ERRORS["NAMBA_SI_SAHIHI"])
+                return
+            card.set_busy(True, "Inaanzisha malipo\u2026")
+
+            def worker():
+                try:
+                    res = _chk.initiate_checkout(app.get("app_uuid", app["id"]), phone, _lic.hardware_fingerprint())
+                    GLib.idle_add(card.set_status, "Thibitisha PIN kwenye simu yako\u2026")
+                    done = _chk.poll_checkout(res["ref"])
+                    lic = done.get("license")
+                    if done.get("status") != "COMPLETED" or not isinstance(lic, dict):
+                        raise _chk.CheckoutError("MALIPO_HAYAKUKAMILIKA")
+                    self._store_license(license_name(app), lic)
+                    GLib.idle_add(self._purchase_done, card, app, "")
+                except Exception as exc:
+                    code = str(exc) if isinstance(exc, _chk.CheckoutError) else "MALIPO_HAYAKUKAMILIKA"
+                    GLib.idle_add(self._purchase_done, card, app, code)
+            threading.Thread(target=worker, daemon=True).start()
+
+        def _store_license(self, name, envelope):
+            """Leseni iko /etc/uhuru/licenses (ya root): inaandikwa kwa pkexec, kama usakinishaji wa apt."""
+            if (not re.match(r"^[a-z0-9][a-z0-9.\-]{1,149}$", name or "") or not isinstance(envelope, dict)
+                    or "payload" not in envelope or "signature" not in envelope):
+                raise _chk.CheckoutError("LEESENI_HAIJAHIFADHIWA")
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            tmp = os.path.join(CACHE_DIR, "lic-" + name + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(envelope, fh)
+            try:
+                rc, _tail = run_privileged(["install", "-D", "-m", "0644", tmp,
+                                            os.path.join(LICENSE_DIR_SYS, name + ".lic")])
+            finally:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            if rc != 0:
+                raise _chk.CheckoutError("LEESENI_HAIJAHIFADHIWA")
+
+        def _purchase_done(self, card, app, code):
+            card.set_busy(False, "")
+            if code:
+                self.message(Gtk.MessageType.ERROR, "Malipo hayakukamilika: %s" % app["name"],
+                             PAY_ERRORS.get(code, "Imeshindikana (%s)." % code[:40]))
+                self.reload_state()
+                return False
+            self.reload_state()
+            if not is_licensed(app):
+                self.message(Gtk.MessageType.ERROR, "Leseni haikuthibitishwa",
+                             "Malipo yamepokelewa lakini leseni haikuthibitishwa. Wasiliana na LGT Store.")
+                return False
+            self.install(card, app)
+            return False
 
         def remove(self, card, app):
             if app["type"] == "pwa":

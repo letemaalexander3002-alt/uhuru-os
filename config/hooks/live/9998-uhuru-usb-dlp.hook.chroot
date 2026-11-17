@@ -1,0 +1,5 @@
+#!/bin/sh
+# uhuru-v180b - 9998: kuwasha uhuru-usb-dlp.service kila boot
+systemctl enable uhuru-usb-dlp.service >/dev/null 2>&1 || true
+echo "uhuru-v180b: usb-dlp unit imewashwa"
+exit 0

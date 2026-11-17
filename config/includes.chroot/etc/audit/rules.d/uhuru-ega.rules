@@ -1,0 +1,7 @@
+# uhuru-v180: e-GA audit
+-w /etc/passwd -p wa -k uhuru-identity
+-w /etc/shadow -p wa -k uhuru-identity
+-w /etc/group -p wa -k uhuru-identity
+-w /etc/sudoers -p wa -k uhuru-identity
+-w /etc/sudoers.d/ -p wa -k uhuru-identity
+-a always,exit -F arch=b64 -F euid=0 -F auid>=1000 -F auid!=unset -S execve -k uhuru-root-cmd

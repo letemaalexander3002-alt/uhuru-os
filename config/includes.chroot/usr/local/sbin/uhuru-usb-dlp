@@ -1,0 +1,29 @@
+#!/bin/sh
+# uhuru-usb-dlp: inasoma /etc/uhuru/usb-policy.conf na kuandika kanuni za udev.
+# Zuio pekee: USB_MODE=read-only. Live medium (ISO yenye lebo UHURU_OS) haiguswi.
+POL=/etc/uhuru/usb-policy.conf
+RULES=/etc/udev/rules.d/99-uhuru-usb-dlp.rules
+MODE=allow-scan
+if [ -r "$POL" ]; then
+    m=$(sed -n 's/^USB_MODE=//p' "$POL" | head -n 1 | tr -d ' \r')
+    [ -n "$m" ] && MODE=$m
+fi
+case "$MODE" in
+    read-only)
+        cat > "$RULES" <<'UHURU_RULES_EOF'
+# uhuru-usb-dlp: soma tu. Live medium (UHURU_OS) haiguswi.
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ENV{ID_BUS}=="usb", ENV{ID_FS_LABEL}!="UHURU_OS", RUN+="/sbin/blockdev --setro /dev/%k"
+UHURU_RULES_EOF
+        udevadm control --reload 2>/dev/null || true
+        udevadm trigger --subsystem-match=block --action=add 2>/dev/null || true
+        echo "uhuru-usb-dlp: mode=read-only (kanuni zimewekwa)"
+        ;;
+    *)
+        cat > "$RULES" <<'UHURU_RULES_EOF'
+# uhuru-usb-dlp: hakuna kanuni ya kuzuia (mode=allow-scan au mode isiyojulikana).
+UHURU_RULES_EOF
+        udevadm control --reload 2>/dev/null || true
+        echo "uhuru-usb-dlp: mode=$MODE (hakuna kizuizi)"
+        ;;
+esac
+exit 0
