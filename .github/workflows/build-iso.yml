@@ -113,3 +113,29 @@ jobs:
           name: boot-serial-log
           path: serial.log
           retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: uhuru-os-iso
+
+      - name: Verify checksum
+        run: sha256sum -c live-image-amd64.hybrid.iso.sha256
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "iso-${{ github.run_number }}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Uhuru OS ISO #${{ github.run_number }}" \
+            --notes "Built from commit ${{ github.sha }}" \
+            live-image-amd64.hybrid.iso \
+            live-image-amd64.hybrid.iso.sha256
