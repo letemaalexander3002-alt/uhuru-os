@@ -1,0 +1,62 @@
+name: Release existing build
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID (acha tupu = build ya mwisho iliyofaulu)"
+        required: false
+        default: ""
+      tag:
+        description: "Jina la tag ya Release"
+        required: true
+        default: "v18.1"
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Resolve run id
+        id: r
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RID="${{ inputs.run_id }}"
+          if [ -z "$RID" ]; then
+            RID=$(gh run list --repo "${{ github.repository }}" \
+              --workflow build-iso.yml --status success --limit 1 \
+              --json databaseId -q '.[0].databaseId')
+          fi
+          [ -n "$RID" ] || { echo "Hakuna build iliyofaulu"; exit 1; }
+          echo "Using run $RID"
+          echo "id=$RID" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: uhuru-os-iso
+          run-id: ${{ steps.r.outputs.id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Verify checksum
+        run: sha256sum -c live-image-amd64.hybrid.iso.sha256
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${{ inputs.tag }}" --repo "${{ github.repository }}" --clobber \
+              live-image-amd64.hybrid.iso live-image-amd64.hybrid.iso.sha256
+          else
+            gh release create "${{ inputs.tag }}" \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "Uhuru OS ${{ inputs.tag }}" \
+              --notes "ISO kutoka build run #${{ steps.r.outputs.id }}" \
+              live-image-amd64.hybrid.iso live-image-amd64.hybrid.iso.sha256
+          fi
