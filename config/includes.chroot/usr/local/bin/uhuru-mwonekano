@@ -1,0 +1,79 @@
+#!/bin/bash
+# Uhuru OS v19.1: Mwonekano (Light/Dark). Inabadilisha mandhari ya GTK, ikoni na fremu ya madirisha kwa akaunti ya sasa (hahitaji root).
+#   uhuru-mwonekano            kidirisha (zenity), au --get ikiwa hakuna skrini
+#   uhuru-mwonekano --light | --dark | --toggle | --get | --list | --check
+# Mazingira ya majaribio: UHURU_THEME_DEFAULTS, UHURU_THEMES_DIR, UHURU_ICONS_DIR, UHURU_MODE_FILE, UHURU_XFCONF (amri mbadala ya xfconf-query).
+set -u
+DEFAULTS=${UHURU_THEME_DEFAULTS:-/etc/uhuru/theme.defaults}
+THEMES_DIR=${UHURU_THEMES_DIR:-/usr/share/themes}
+ICONS_DIR=${UHURU_ICONS_DIR:-/usr/share/icons}
+MODE_FILE=${UHURU_MODE_FILE:-$HOME/.config/uhuru/mwonekano}
+XQ=${UHURU_XFCONF:-xfconf-query}
+
+UHURU_DEFAULT_MODE=light UHURU_GTK_LIGHT=Arc UHURU_GTK_DARK=Arc-Dark UHURU_ICONS_LIGHT=Papirus UHURU_ICONS_DARK=Papirus-Dark
+UHURU_ICONS_FALLBACK=Adwaita UHURU_FONT="Noto Sans 10"
+# shellcheck disable=SC1090
+[ -r "$DEFAULTS" ] && . "$DEFAULTS"
+
+lang_code() { case "${LANGUAGE:-${LANG:-}}" in fr*) echo fr ;; en*) echo en ;; *) echo sw ;; esac; }
+msg() {  # msg KEY
+    case "$(lang_code):$1" in
+        sw:applied) echo "Mwonekano umewekwa: %s" ;; en:applied) echo "Appearance set: %s" ;; fr:applied) echo "Apparence appliquée : %s" ;;
+        sw:notheme) echo "Mandhari '%s' haipo kwenye mfumo huu." ;; en:notheme) echo "Theme '%s' is not installed on this system." ;; fr:notheme) echo "Le thème « %s » n'est pas installé." ;;
+        sw:title) echo "Mwonekano" ;; en:title) echo "Appearance" ;; fr:title) echo "Apparence" ;;
+        sw:ask) echo "Chagua mwonekano wa desktop:" ;; en:ask) echo "Choose the desktop look:" ;; fr:ask) echo "Choisissez l'apparence du bureau :" ;;
+        sw:light) echo "Mwanga (Light)" ;; en:light) echo "Light" ;; fr:light) echo "Clair" ;;
+        sw:dark) echo "Giza (Dark)" ;; en:dark) echo "Dark" ;; fr:dark) echo "Sombre" ;;
+        sw:noxfconf) echo "xfconf-query haipo; mwonekano haukuweza kuwekwa." ;; en:noxfconf) echo "xfconf-query not found; the look could not be set." ;; fr:noxfconf) echo "xfconf-query introuvable ; apparence non appliquée." ;;
+    esac
+}
+say() { local f; f=$(msg "$1"); shift; [ $# -gt 0 ] && printf "$f\n" "$@" || printf '%s\n' "$f"; }
+
+theme_ok() { [ -d "$THEMES_DIR/$1" ]; }
+icons_ok() { [ -d "$ICONS_DIR/$1" ]; }
+
+current_mode() {
+    local m=""
+    [ -r "$MODE_FILE" ] && m=$(sed -n '1{s/[^a-z]//g;p;q}' "$MODE_FILE" 2>/dev/null)
+    case "$m" in light|dark) echo "$m" ;; *) echo "${UHURU_DEFAULT_MODE:-light}" ;; esac
+}
+
+apply_mode() {  # apply_mode light|dark
+    local mode=$1 gtk icons xfwm
+    if [ "$mode" = dark ]; then gtk=$UHURU_GTK_DARK; icons=$UHURU_ICONS_DARK; else gtk=$UHURU_GTK_LIGHT; icons=$UHURU_ICONS_LIGHT; fi
+    theme_ok "$gtk" || { say notheme "$gtk" >&2; return 3; }
+    icons_ok "$icons" || icons=$UHURU_ICONS_FALLBACK
+    xfwm=$gtk; [ -d "$THEMES_DIR/$gtk/xfwm4" ] || xfwm=Default
+    command -v "$XQ" >/dev/null 2>&1 || { say noxfconf >&2; return 4; }
+    "$XQ" -c xsettings -p /Net/ThemeName -n -t string -s "$gtk" || return 5
+    "$XQ" -c xsettings -p /Net/IconThemeName -n -t string -s "$icons" || return 5
+    [ -n "${UHURU_FONT:-}" ] && "$XQ" -c xsettings -p /Gtk/FontName -n -t string -s "$UHURU_FONT" || true
+    "$XQ" -c xfwm4 -p /general/theme -n -t string -s "$xfwm" || true
+    mkdir -p "$(dirname "$MODE_FILE")" && printf '%s\n' "$mode" > "$MODE_FILE"
+    say applied "$mode ($gtk / $icons)"
+}
+
+case "${1:-}" in
+    --light) apply_mode light ;;
+    --dark) apply_mode dark ;;
+    --toggle) if [ "$(current_mode)" = dark ]; then apply_mode light; else apply_mode dark; fi ;;
+    --get) current_mode ;;
+    --list) printf 'light %s %s\ndark %s %s\n' "$UHURU_GTK_LIGHT" "$UHURU_ICONS_LIGHT" "$UHURU_GTK_DARK" "$UHURU_ICONS_DARK" ;;
+    --check)
+        echo "mode=$(current_mode)"
+        for t in "$UHURU_GTK_LIGHT" "$UHURU_GTK_DARK"; do theme_ok "$t" && echo "theme $t: ipo" || echo "theme $t: HAIPO"; done
+        for i in "$UHURU_ICONS_LIGHT" "$UHURU_ICONS_DARK"; do icons_ok "$i" && echo "icons $i: ipo" || echo "icons $i: HAIPO (itatumika $UHURU_ICONS_FALLBACK)"; done
+        [ -r /usr/share/uhuru/theme-build.txt ] && cat /usr/share/uhuru/theme-build.txt
+        ;;
+    "")
+        if [ -n "${DISPLAY:-}" ] && command -v zenity >/dev/null 2>&1; then
+            cur=$(current_mode); a=FALSE; b=FALSE; [ "$cur" = dark ] && b=TRUE || a=TRUE
+            pick=$(zenity --list --radiolist --title="$(msg title)" --text="$(msg ask)" --column="" --column="id" --column="$(msg title)" \
+                   --hide-column=2 --print-column=2 "$a" light "$(msg light)" "$b" dark "$(msg dark)" 2>/dev/null) || exit 0
+            case "$pick" in light|dark) apply_mode "$pick" ;; esac
+        else
+            current_mode
+        fi
+        ;;
+    *) echo "Matumizi: uhuru-mwonekano [--light|--dark|--toggle|--get|--list|--check]" >&2; exit 2 ;;
+esac

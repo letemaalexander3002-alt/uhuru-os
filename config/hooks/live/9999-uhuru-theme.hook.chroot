@@ -1,0 +1,110 @@
+#!/bin/sh
+# Uhuru OS v19.1: urembo (mandhari, ikoni, wallpapers za Kitanzania, skrini ya kuingia, tafsiri za menyu).
+# Haivunji build: kila kosa linaishia onyo (uhuru-theme: ONYO: ...), exit 0 daima. Inaendeshwa baada ya 9999-uhuru-i18n.
+# Kanuni: hakuna faili la awamu nyingine linalobadilishwa isipokuwa mistari ya mandhari (greeter, xsettings, xfwm4) na Name[en]/Name[fr] kwenye .desktop.
+R=${UHURU_HOOK_ROOT:-}   # tupu kwenye build halisi; majaribio yanaweka folda ya muda
+log() { echo "uhuru-theme: $*"; }
+warn() { echo "uhuru-theme: ONYO: $*"; }
+
+DEFS=$R/etc/uhuru/theme.defaults
+UHURU_INSTALL_THEME=yes UHURU_INSTALL_ICONS=yes UHURU_GTK_LIGHT=Arc UHURU_GTK_DARK=Arc-Dark UHURU_ICONS_LIGHT=Papirus UHURU_ICONS_DARK=Papirus-Dark
+UHURU_ICONS_FALLBACK=Adwaita UHURU_GREETER_GTK=Arc-Dark UHURU_GREETER_ICONS=Papirus-Dark UHURU_FONT="Noto Sans 10" UHURU_GREETER_FONT="Noto Sans 11" UHURU_DEFAULT_MODE=light
+[ -r "$DEFS" ] && . "$DEFS" || warn "$DEFS haipo; maadili ya chaguo-msingi yanatumika"
+
+TOOL=$R/usr/local/lib/uhuru/uhuru-theme-tool
+chmod 0755 $R/usr/local/bin/uhuru-mwonekano "$TOOL" 2>/dev/null || true
+chmod 0644 $R/usr/share/applications/uhuru-mwonekano.desktop $R/etc/uhuru/theme.defaults 2>/dev/null || true
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null 2>&1 || warn "apt-get update imeshindikana"
+
+install_pkg() {
+    if dpkg -s "$1" >/dev/null 2>&1; then log "$1 tayari ipo"; return 0; fi
+    if apt-cache show "$1" >/dev/null 2>&1 && apt-get install -y --no-install-recommends "$1" >/dev/null 2>&1; then log "imewekwa $1"; return 0; fi
+    warn "$1 haikuwekwa (haipo kwenye repo au imeshindikana)"; return 1
+}
+# at-spi2-core: sababu ya onyo la 'org.a11y.Bus' kwenye .xsession-errors (kifurushi kidogo; pia msaada wa walemavu wa macho)
+install_pkg at-spi2-core
+[ "$UHURU_INSTALL_THEME" = yes ] && install_pkg arc-theme
+[ "$UHURU_INSTALL_ICONS" = yes ] && install_pkg papirus-icon-theme
+
+# kupunguza ukubwa: ondoa tofauti zisizotumika (Papirus: ePapirus, Papirus-Light; Arc: matoleo ya -Solid)
+for d in $R/usr/share/icons/ePapirus $R/usr/share/icons/ePapirus-Dark $R/usr/share/icons/Papirus-Light; do
+    [ -d "$d" ] && [ ! -L "$d" ] && rm -rf "$d" && log "imeondolewa $d"
+done
+for d in $R/usr/share/themes/Arc-Solid $R/usr/share/themes/Arc-Dark-Solid $R/usr/share/themes/Arc-Darker-Solid; do
+    [ -d "$d" ] && rm -rf "$d" && log "imeondolewa $d"
+done
+
+# uamuzi wa majina halisi (ikiwa mandhari haipo, hatuguswi chochote cha mwonekano)
+have_theme() { [ -d "$R/usr/share/themes/$1" ]; }
+have_icons() { [ -d "$R/usr/share/icons/$1" ]; }
+GTK_L=$UHURU_GTK_LIGHT; GTK_D=$UHURU_GTK_DARK
+ICN_L=$UHURU_ICONS_LIGHT; ICN_D=$UHURU_ICONS_DARK
+have_icons "$ICN_L" || ICN_L=$UHURU_ICONS_FALLBACK
+have_icons "$ICN_D" || ICN_D=$UHURU_ICONS_FALLBACK
+GR_ICN=$UHURU_GREETER_ICONS; have_icons "$GR_ICN" || GR_ICN=$UHURU_ICONS_FALLBACK
+if [ "$UHURU_DEFAULT_MODE" = dark ]; then GTK_NOW=$GTK_D; ICN_NOW=$ICN_D; else GTK_NOW=$GTK_L; ICN_NOW=$ICN_L; fi
+THEME_OK=no
+if have_theme "$GTK_NOW" && have_theme "$UHURU_GREETER_GTK"; then THEME_OK=yes; else warn "mandhari $GTK_NOW au $UHURU_GREETER_GTK haipo: mwonekano wa awali umebaki (hakuna mabadiliko ya xsettings/greeter)"; fi
+
+XDG_X=$R/etc/xdg/xfce4/xfconf/xfce-perchannel-xml
+SKEL_X=$R/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml
+if [ "$THEME_OK" = yes ] && [ -x "$TOOL" ]; then
+    XFWM=$GTK_NOW; [ -d "$R/usr/share/themes/$GTK_NOW/xfwm4" ] || XFWM=Default
+    python3 "$TOOL" xsettings "$XDG_X/xsettings.xml" --gtk "$GTK_NOW" --icons "$ICN_NOW" --font "$UHURU_FONT" && log "xsettings (/etc/xdg): $GTK_NOW, $ICN_NOW, $UHURU_FONT" || warn "xsettings (/etc/xdg) imeshindikana"
+    python3 "$TOOL" xfwm4 "$XDG_X/xfwm4.xml" --theme "$XFWM" && log "xfwm4 (/etc/xdg): $XFWM" || warn "xfwm4 (/etc/xdg) imeshindikana"
+    # skel ikiwa tayari ina mipangilio (ingeshinda ya $R/etc/xdg kwa watumiaji wapya)
+    [ -f "$SKEL_X/xsettings.xml" ] && { python3 "$TOOL" xsettings "$SKEL_X/xsettings.xml" --gtk "$GTK_NOW" --icons "$ICN_NOW" --font "$UHURU_FONT" && log "xsettings (/etc/skel) imesasishwa" || warn "xsettings (/etc/skel) imeshindikana"; }
+    [ -f "$SKEL_X/xfwm4.xml" ] && { python3 "$TOOL" xfwm4 "$SKEL_X/xfwm4.xml" --theme "$XFWM" && log "xfwm4 (/etc/skel) imesasishwa" || warn "xfwm4 (/etc/skel) imeshindikana"; }
+    # skrini ya kuingia: mandhari, ikoni na fonti tu; background, indicators na uhuru-greeter-setup havibadilishwi
+    if [ -f $R/etc/lightdm/lightdm-gtk-greeter.conf ]; then
+        python3 "$TOOL" greeter $R/etc/lightdm/lightdm-gtk-greeter.conf --gtk "$UHURU_GREETER_GTK" --icons "$GR_ICN" --font "$UHURU_GREETER_FONT" \
+            && log "greeter: $UHURU_GREETER_GTK, $GR_ICN, $UHURU_GREETER_FONT" || warn "greeter conf imeshindikana"
+    else
+        warn "$R/etc/lightdm/lightdm-gtk-greeter.conf haipo; greeter haikuguswa"
+    fi
+fi
+
+# wallpapers: faili halisi ziko $R/usr/share/backgrounds/uhuru; viungo vya ishara kwenye folda ya zamani (uhuru-os) ili mzunguko wa wallpapers wa sasa uzione kama unatumia mfumo wa majina uhuru-os-wallpaper-N.png
+WP=$R/usr/share/backgrounds/uhuru
+OLD=$R/usr/share/backgrounds/uhuru-os
+n=0; for f in kilimanjaro zanzibar tanzanite kitenge tingatinga; do [ -f "$WP/$f.png" ] && n=$((n+1)); done
+chmod 0644 "$WP"/*.png 2>/dev/null || true
+log "wallpapers mpya: $n kati ya 5"
+if [ -d "$OLD" ]; then
+    i=5
+    for f in kilimanjaro zanzibar tanzanite kitenge tingatinga; do
+        [ -f "$WP/$f.png" ] && [ ! -e "$OLD/uhuru-os-wallpaper-$i.png" ] && ln -s "../uhuru/$f.png" "$OLD/uhuru-os-wallpaper-$i.png"
+        i=$((i+1))
+    done
+    if [ -f $R/usr/local/bin/uhuru-wallpaper ]; then
+        log "INFO uhuru-wallpaper inatumia: $(grep -o 'uhuru-os-wallpaper[^[:space:]"]*' "$R/usr/local/bin/uhuru-wallpaper" | sort -u | tr '\n' ' ')"
+    fi
+fi
+
+# usalama wa v19.0: locale ya Kifaransa (iliripotiwa 'haijathibitishwa' kwenye CI ya v19.0)
+if ! locale -a 2>/dev/null | grep -qix 'fr_FR.utf8'; then
+    [ -f $R/usr/share/i18n/locales/fr_FR ] && localedef -c -i fr_FR -f UTF-8 fr_FR.UTF-8 >/dev/null 2>&1
+fi
+if locale -a 2>/dev/null | grep -qix 'fr_FR.utf8'; then FR=ok; else FR=haipo; warn "locale fr_FR.UTF-8 haipo"; fi
+
+# tafsiri za menyu (Name[en]/Name[fr]) kwa programu za Uhuru; Name= ya Kiswahili haiguswi
+if [ -x "$TOOL" ]; then python3 "$TOOL" desktop-i18n $R/usr/share/applications $R/etc/skel/Desktop 2>&1 | sed 's/^/uhuru-theme: /'; fi
+
+# ripoti ndani ya ISO (uhuru-mwonekano --check inaisoma); ukubwa halisi wa ISO unapimwa na scripts/v191-postcheck.sh
+mkdir -p $R/usr/share/uhuru
+{
+    echo "theme_build=v19.1"
+    echo "gtk_light=$GTK_L ($(have_theme "$GTK_L" && echo ipo || echo HAIPO))"
+    echo "gtk_dark=$GTK_D ($(have_theme "$GTK_D" && echo ipo || echo HAIPO))"
+    echo "icons_light=$ICN_L ($(have_icons "$ICN_L" && echo ipo || echo HAIPO))"
+    echo "icons_dark=$ICN_D ($(have_icons "$ICN_D" && echo ipo || echo HAIPO))"
+    echo "greeter=$UHURU_GREETER_GTK/$GR_ICN theme_applied=$THEME_OK"
+    echo "wallpapers=$n/5"
+    echo "locale_fr=$FR"
+    echo "atspi=$(dpkg -s at-spi2-core >/dev/null 2>&1 && echo ipo || echo HAIPO)"
+    echo "size_kb arc=$(du -sk $R/usr/share/themes/Arc* 2>/dev/null | awk '{s+=$1} END{print s+0}') papirus=$(du -sk $R/usr/share/icons/Papirus* 2>/dev/null | awk '{s+=$1} END{print s+0}')"
+} > $R/usr/share/uhuru/theme-build.txt
+sed 's/^/uhuru-theme: /' $R/usr/share/uhuru/theme-build.txt
+log "urembo umewekwa (mode=$UHURU_DEFAULT_MODE)"
+exit 0

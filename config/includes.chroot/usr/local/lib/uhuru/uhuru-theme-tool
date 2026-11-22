@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Uhuru OS v19.1: zana ndogo ya kuandika mipangilio ya mwonekano kwa usalama (stdlib tu, idempotent).
+
+  uhuru-theme-tool xsettings <faili.xml> --gtk NAME --icons NAME --font "Noto Sans 10"
+  uhuru-theme-tool xfwm4     <faili.xml> --theme NAME
+  uhuru-theme-tool greeter   <faili.conf> --gtk NAME --icons NAME --font "Noto Sans 11"
+  uhuru-theme-tool desktop-i18n <folda|faili>... [--quiet]
+
+Kila amri inahifadhi mipangilio mingine yote iliyopo kwenye faili. Msimbo wa kutoka: 0 sawa, 2 hoja mbaya.
+"""
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+
+# ------------------------------------------------------------------ xfconf (xsettings, xfwm4)
+def _channel(path, name):
+    if os.path.isfile(path) and os.path.getsize(path) > 0:
+        try:
+            root = ET.parse(path).getroot()
+            if root.tag == "channel":
+                return root
+        except ET.ParseError:
+            pass
+    root = ET.Element("channel", {"name": name, "version": "1.0"})
+    return root
+
+
+def _set(root, chain, vtype, value):
+    node = root
+    for key in chain[:-1]:
+        nxt = None
+        for ch in node.findall("property"):
+            if ch.get("name") == key:
+                nxt = ch
+                break
+        if nxt is None:
+            nxt = ET.SubElement(node, "property", {"name": key, "type": "empty"})
+        node = nxt
+    leaf = None
+    for ch in node.findall("property"):
+        if ch.get("name") == chain[-1]:
+            leaf = ch
+            break
+    if leaf is None:
+        leaf = ET.SubElement(node, "property", {"name": chain[-1]})
+    leaf.set("type", vtype)
+    leaf.set("value", value)
+
+
+def _write(root, path):
+    if hasattr(ET, "indent"):
+        ET.indent(root, space="  ")
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(b'<?xml version="1.0" encoding="UTF-8"?>\n\n')
+        f.write(ET.tostring(root, encoding="utf-8"))
+        f.write(b"\n")
+    os.replace(tmp, path)
+    os.chmod(path, 0o644)
+
+
+def cmd_xsettings(path, gtk, icons, font):
+    root = _channel(path, "xsettings")
+    if gtk:
+        _set(root, ["Net", "ThemeName"], "string", gtk)
+    if icons:
+        _set(root, ["Net", "IconThemeName"], "string", icons)
+    if font:
+        _set(root, ["Gtk", "FontName"], "string", font)
+    _write(root, path)
+
+
+def cmd_xfwm4(path, theme):
+    root = _channel(path, "xfwm4")
+    _set(root, ["general", "theme"], "string", theme)
+    _write(root, path)
+
+
+# ------------------------------------------------------------------ lightdm-gtk-greeter.conf (ini, huhifadhi maoni)
+def cmd_greeter(path, gtk, icons, font):
+    want = {}
+    if gtk:
+        want["theme-name"] = gtk
+    if icons:
+        want["icon-theme-name"] = icons
+    if font:
+        want["font-name"] = font
+    lines = open(path, encoding="utf-8").read().split("\n") if os.path.isfile(path) else ["[greeter]"]
+    out, in_sec, seen_sec, done = [], False, False, set()
+    sec_end = None
+    for ln in lines:
+        m = re.match(r"^\s*\[([^\]]+)\]\s*$", ln)
+        if m:
+            if in_sec and sec_end is None:
+                sec_end = len(out)
+            in_sec = m.group(1).strip() == "greeter"
+            seen_sec = seen_sec or in_sec
+            out.append(ln)
+            continue
+        if in_sec:
+            km = re.match(r"^\s*([A-Za-z0-9_.-]+)\s*=", ln)
+            if km and km.group(1) in want:
+                key = km.group(1)
+                if key in done:
+                    continue                        # ondoa nakala
+                out.append("%s=%s" % (key, want[key]))
+                done.add(key)
+                continue
+        out.append(ln)
+    if not seen_sec:
+        out = ["[greeter]"] + out
+        sec_end = 1
+    elif sec_end is None:
+        # [greeter] ndiyo sehemu ya mwisho: ingiza kabla ya mistari tupu ya mwisho
+        sec_end = len(out)
+        while sec_end > 0 and out[sec_end - 1].strip() == "":
+            sec_end -= 1
+    missing = [k for k in want if k not in done]
+    for k in reversed(missing):
+        out.insert(sec_end, "%s=%s" % (k, want[k]))
+    text = "\n".join(out)
+    if not text.endswith("\n"):
+        text += "\n"
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+    os.chmod(path, 0o644)
+
+
+# ------------------------------------------------------------------ tafsiri za .desktop (menyu bila gettext)
+# Kiswahili ndicho chanzo (Name= haiguswi). Tafsiri za en/fr zimeandikwa na msaidizi wa AI: zikaguliwe na mzungumzaji wa asili.
+DESKTOP_I18N = {
+    "uhuru-store": ("LGT Store", "Boutique LGT", "Apps and packages for Uhuru OS", "Applications et paquets pour Uhuru OS"),
+    "lgt-store": ("LGT Store", "Boutique LGT", "Apps and packages for Uhuru OS", "Applications et paquets pour Uhuru OS"),
+    "uhuru-share": ("Uhuru Share", "Uhuru Share", "Share files and app packs without internet", "Partagez fichiers et paquets sans Internet"),
+    "uhuru-protect": ("Security Center", "Centre de sécurité", "Check and protect your computer", "Vérifiez et protégez votre ordinateur"),
+    "uhuru-hwcheck": ("Hardware Check", "Vérification du matériel", "Check your computer's hardware", "Vérifiez le matériel de votre ordinateur"),
+    "uhuru-about": ("About Uhuru OS", "À propos d'Uhuru OS", "Information about this system", "Informations sur ce système"),
+    "uhuru-installer": ("Install Uhuru OS", "Installer Uhuru OS", "Install Uhuru OS on this computer", "Installer Uhuru OS sur cet ordinateur"),
+    "uhuru-selftest": ("System self-test", "Auto-diagnostic du système", "Run the Uhuru OS self-test", "Lancer l'auto-diagnostic d'Uhuru OS"),
+    "uhuru-mwonekano": ("Appearance", "Apparence", "Switch between light and dark look", "Passer du mode clair au mode sombre"),
+    "uhuru-dev": ("Developer tools", "Outils de développement", "Uhuru Dev Edition tools", "Outils de l'édition Uhuru Dev"),
+    "uhuru-terminal": ("Uhuru Terminal", "Terminal Uhuru", "Command line", "Ligne de commande"),
+    "uhuru-shell": ("Uhuru Terminal", "Terminal Uhuru", "Command line", "Ligne de commande"),
+}
+
+
+def _stem_for(path, text):
+    stem = os.path.basename(path)[:-len(".desktop")]
+    if stem in DESKTOP_I18N:
+        return stem
+    m = re.search(r"^Exec=\S*?([A-Za-z0-9_.-]+)(?:\s|$)", text, re.M)
+    if m and m.group(1) in DESKTOP_I18N:
+        return m.group(1)
+    return None
+
+
+def _desktop_files(targets):
+    for t in targets:
+        if os.path.isdir(t):
+            for fn in sorted(os.listdir(t)):
+                if fn.endswith(".desktop") and re.match(r"^(uhuru|lgt|letema)-", fn):
+                    yield os.path.join(t, fn)
+        elif os.path.isfile(t) and t.endswith(".desktop"):
+            yield t
+
+
+def _main_group(text):
+    """Maandishi ya kundi la [Desktop Entry] tu (hadi kundi linalofuata)."""
+    grp, in_main = [], False
+    for ln in text.split("\n"):
+        if ln.strip() == "[Desktop Entry]":
+            in_main = True
+            continue
+        if in_main and re.match(r"^\s*\[.+\]\s*$", ln):
+            break
+        if in_main:
+            grp.append(ln)
+    return "\n".join(grp)
+
+
+def cmd_desktop_i18n(targets, quiet=False):
+    matched, skipped, unmatched = [], [], []
+    for path in _desktop_files(targets):
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            unmatched.append(path)
+            continue
+        if "[Desktop Entry]" not in text:
+            unmatched.append(path)
+            continue
+        stem = _stem_for(path, text)
+        if stem is None:
+            unmatched.append(path)
+            continue
+        name_en, name_fr, com_en, com_fr = DESKTOP_I18N[stem]
+        # Funguo huangaliwa ndani ya kundi la [Desktop Entry] pekee. Tafsiri ya Comment[xx] huongezwa TU kama Comment= ipo
+        # (desktop-file-validate hukataa 'Comment[fr]' bila 'Comment'); vivyo hivyo Name[xx] inahitaji Name=.
+        main_grp = _main_group(text)
+        add = []
+        for key, val in (("Name[en]", name_en), ("Name[fr]", name_fr), ("Comment[en]", com_en), ("Comment[fr]", com_fr)):
+            base = key.split("[")[0]
+            if not re.search(r"^%s=" % base, main_grp, re.M):
+                continue
+            if not re.search(r"^%s=" % re.escape(key), main_grp, re.M):
+                add.append("%s=%s" % (key, val))
+        if not add:
+            skipped.append(path)
+            continue
+        # ingiza mwishoni mwa kundi la [Desktop Entry] (kabla ya kundi lingine, k.m. [Desktop Action ...])
+        lines = text.split("\n")
+        end, in_main = len(lines), False
+        for i, ln in enumerate(lines):
+            if ln.strip() == "[Desktop Entry]":
+                in_main = True
+                continue
+            if in_main and re.match(r"^\s*\[.+\]\s*$", ln):
+                end = i
+                break
+        while end > 0 and lines[end - 1].strip() == "":
+            end -= 1
+        lines[end:end] = add
+        out = "\n".join(lines)
+        if not out.endswith("\n"):
+            out += "\n"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(out)
+        matched.append(path)
+    if not quiet:
+        print("desktop-i18n: imewekwa=%d tayari=%d haijulikani=%d" % (len(matched), len(skipped), len(unmatched)))
+        for p in matched:
+            print("  imewekwa: %s" % p)
+        for p in unmatched:
+            print("  haijulikani: %s" % p)
+    return 0
+
+
+def main(argv):
+    import argparse
+    ap = argparse.ArgumentParser(prog="uhuru-theme-tool", add_help=True)
+    sub = ap.add_subparsers(dest="cmd")
+    a = sub.add_parser("xsettings"); a.add_argument("file"); a.add_argument("--gtk"); a.add_argument("--icons"); a.add_argument("--font")
+    b = sub.add_parser("xfwm4"); b.add_argument("file"); b.add_argument("--theme", required=True)
+    c = sub.add_parser("greeter"); c.add_argument("file"); c.add_argument("--gtk"); c.add_argument("--icons"); c.add_argument("--font")
+    d = sub.add_parser("desktop-i18n"); d.add_argument("targets", nargs="+"); d.add_argument("--quiet", action="store_true")
+    try:
+        ns = ap.parse_args(argv)
+    except SystemExit:
+        return 2
+    if ns.cmd == "xsettings":
+        cmd_xsettings(ns.file, ns.gtk, ns.icons, ns.font)
+    elif ns.cmd == "xfwm4":
+        cmd_xfwm4(ns.file, ns.theme)
+    elif ns.cmd == "greeter":
+        cmd_greeter(ns.file, ns.gtk, ns.icons, ns.font)
+    elif ns.cmd == "desktop-i18n":
+        return cmd_desktop_i18n(ns.targets, ns.quiet)
+    else:
+        ap.print_usage(sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        try:
+            sys.stdout = None
+        finally:
+            os._exit(0)

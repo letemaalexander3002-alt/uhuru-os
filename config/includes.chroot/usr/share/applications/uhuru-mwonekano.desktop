@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Mwonekano
+Name[en]=Appearance
+Name[fr]=Apparence
+Comment=Chagua mwonekano wa Mwanga au Giza
+Comment[en]=Switch between light and dark look
+Comment[fr]=Passer du mode clair au mode sombre
+Exec=/usr/local/bin/uhuru-mwonekano
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Settings;DesktopSettings;GTK;

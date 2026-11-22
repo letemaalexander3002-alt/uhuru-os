@@ -1,0 +1,14 @@
+# Uhuru OS v19.1: mipangilio ya mwonekano (sh). Faili hili ndilo chanzo kimoja cha ukweli kwa hook, uhuru-mwonekano na majaribio.
+# Kubadilisha mandhari/ikoni/fonti: hariri hapa tu, kisha jenga upya. Usiweke siri hapa.
+UHURU_DEFAULT_MODE=light            # light | dark (mwonekano wa mwanzo wa desktop)
+UHURU_GTK_LIGHT=Arc
+UHURU_GTK_DARK=Arc-Dark
+UHURU_ICONS_LIGHT=Papirus
+UHURU_ICONS_DARK=Papirus-Dark
+UHURU_ICONS_FALLBACK=Adwaita        # inatumika ikiwa Papirus haikuwekwa
+UHURU_GREETER_GTK=Arc-Dark          # skrini ya kuingia
+UHURU_GREETER_ICONS=Papirus-Dark
+UHURU_FONT="Noto Sans 10"           # tayari ipo kwenye ISO (fonts-noto-core): gharama ya ukubwa = 0
+UHURU_GREETER_FONT="Noto Sans 11"
+UHURU_INSTALL_THEME=yes             # yes | no  (no = hook haisakinishi arc-theme)
+UHURU_INSTALL_ICONS=yes             # yes | no  (no = hook haisakinishi papirus-icon-theme; ISO ikizidi kikomo, weka no)

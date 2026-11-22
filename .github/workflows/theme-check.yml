@@ -1,0 +1,28 @@
+name: theme-check
+# Majaribio ya urembo (v19.1): hayajengi ISO; yanaendeshwa kwa sekunde chache kila unapobadilisha faili za mwonekano.
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "config/includes.chroot/etc/uhuru/theme.defaults"
+      - "config/includes.chroot/usr/local/bin/uhuru-mwonekano"
+      - "config/includes.chroot/usr/local/lib/uhuru/uhuru-theme-tool"
+      - "config/includes.chroot/usr/share/applications/uhuru-mwonekano.desktop"
+      - "config/includes.chroot/usr/share/backgrounds/uhuru/**"
+      - "config/hooks/live/9999-uhuru-theme.hook.chroot"
+      - "scripts/theme-selftest.sh"
+      - "scripts/v191-postcheck.sh"
+      - "tools/gen-wallpapers.py"
+      - "docs/LICENSE-WALLPAPERS.md"
+      - ".github/workflows/theme-check.yml"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  theme:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq dash python3 desktop-file-utils libxml2-utils
+      - name: Majaribio ya urembo
+        run: bash scripts/theme-selftest.sh
