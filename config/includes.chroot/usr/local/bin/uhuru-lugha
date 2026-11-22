@@ -1,0 +1,116 @@
+#!/bin/bash
+# Uhuru OS v19.0: chagua lugha (Kiswahili, English, Français).
+#   uhuru-lugha                 kidirisha: chagua lugha ya akaunti yako
+#   uhuru-lugha --list          orodha ya lugha (code na jina)
+#   uhuru-lugha --get           lugha inayotumika sasa (code)
+#   uhuru-lugha --set sw|en|fr  lugha ya akaunti yako (inatumika ukiingia tena)
+#   uhuru-lugha --system CODE   lugha ya MFUMO nzima (inahitaji sudo): skrini ya kuingia na watumiaji wapya
+#   uhuru-lugha --check         ripoti ya hali ya lugha kwenye mfumo huu
+# Kiswahili ndicho chaguo-msingi. Programu nyingi za nje hazina tafsiri ya Kiswahili bado: zinaonekana kwa Kiingereza.
+HOME_DIR=${UHURU_LANG_HOME:-$HOME}
+PREF="$HOME_DIR/.config/uhuru/lang"
+LOCALE_FILE=${UHURU_LOCALE_FILE:-/etc/default/locale}
+SETLOCALE=${UHURU_SET_LOCALE:-/usr/local/sbin/uhuru-set-locale}
+
+valid() { case "$1" in sw|en|fr) return 0 ;; *) return 1 ;; esac; }
+name_of() { case "$1" in sw) printf 'Kiswahili' ;; en) printf 'English' ;; fr) printf 'Français' ;; esac; }
+code_of_locale() { case "$1" in sw*) printf sw ;; en*) printf en ;; fr*) printf fr ;; *) return 1 ;; esac; }
+
+system_code() {
+    local l=""
+    [ -r "$LOCALE_FILE" ] && l=$(sed -n 's/^LANG=//p' "$LOCALE_FILE" | tr -d "\"'" | head -n 1)
+    code_of_locale "$l" 2>/dev/null || printf sw
+}
+user_code() {
+    local c=""
+    [ -r "$PREF" ] && c=$(sed -n '1{s/[^a-z]//g;p;q}' "$PREF" 2>/dev/null)
+    valid "$c" && printf '%s' "$c"
+}
+current() { local c; c=$(user_code); [ -n "$c" ] && printf '%s' "$c" || system_code; }
+have_locale() { locale -a 2>/dev/null | grep -qix "$1"; }
+
+# t KEY [CODE]: ujumbe katika lugha ya CODE (chaguo-msingi: lugha ya sasa)
+t() {
+    local k=$1 l=${2:-$(current)}
+    case "$k:$l" in
+        title:*)    printf 'Lugha / Language / Langue' ;;
+        choose:sw)  printf 'Chagua lugha ya akaunti yako:' ;;
+        choose:en)  printf 'Choose your account language:' ;;
+        choose:fr)  printf 'Choisissez la langue de votre compte :' ;;
+        saved:sw)   printf 'Lugha imehifadhiwa: %s.' "$3" ;;
+        saved:en)   printf 'Language saved: %s.' "$3" ;;
+        saved:fr)   printf 'Langue enregistrée : %s.' "$3" ;;
+        relogin:sw) printf 'Toka kisha uingie tena ili mabadiliko yaonekane kwenye kila programu.' ;;
+        relogin:en) printf 'Log out and back in so the change applies to every application.' ;;
+        relogin:fr) printf 'Déconnectez-vous puis reconnectez-vous pour que le changement s'"'"'applique partout.' ;;
+        partial:sw) printf 'Programu nyingi za nje bado hazina tafsiri ya Kiswahili; zitaonekana kwa Kiingereza.' ;;
+        partial:en) printf '' ;;
+        partial:fr) printf '' ;;
+        logout:sw)  printf 'Toka sasa?' ;;
+        logout:en)  printf 'Log out now?' ;;
+        logout:fr)  printf 'Se déconnecter maintenant ?' ;;
+        nozenity:*) printf 'zenity haipo; tumia: uhuru-lugha --set sw|en|fr' ;;
+    esac
+}
+
+cmd_list() { for c in sw en fr; do printf '%s\t%s\n' "$c" "$(name_of "$c")"; done; }
+
+cmd_set() {
+    local c=$1
+    if ! valid "$c"; then echo "uhuru-lugha: lugha '$c' haijulikani (tumia sw, en au fr)" >&2; return 2; fi
+    mkdir -p "$(dirname "$PREF")" && printf '%s\n' "$c" > "$PREF" || { echo "uhuru-lugha: imeshindwa kuandika $PREF" >&2; return 3; }
+    local loc; case "$c" in sw) loc=sw_TZ.utf8 ;; en) loc=en_US.utf8 ;; fr) loc=fr_FR.utf8 ;; esac
+    have_locale "$loc" || echo "uhuru-lugha: onyo: locale $loc haipo kwenye mfumo huu; lugha haitaonekana hadi itengenezwe" >&2
+    echo "UHURU-LANG user $c"
+}
+
+cmd_system() {
+    local c=$1
+    valid "$c" || { echo "uhuru-lugha: lugha '$c' haijulikani (tumia sw, en au fr)" >&2; return 2; }
+    if [ "$(id -u)" = 0 ] || [ -n "$UHURU_LOCALE_FILE" ]; then "$SETLOCALE" "$c"; else sudo "$SETLOCALE" "$c"; fi
+}
+
+cmd_gui() {
+    command -v zenity >/dev/null 2>&1 || { t nozenity; echo; return 1; }
+    local cur pick c s_sw=FALSE s_en=FALSE s_fr=FALSE
+    cur=$(current)
+    case "$cur" in sw) s_sw=TRUE ;; en) s_en=TRUE ;; fr) s_fr=TRUE ;; esac
+    pick=$(zenity --title="$(t title)" --width=380 --height=300 --list --radiolist --text="$(t choose "$cur")" \
+        --column="" --column="Lugha / Language / Langue" --print-column=2 --hide-header \
+        "$s_sw" Kiswahili "$s_en" English "$s_fr" Français) || return 0
+    case "$pick" in Kiswahili) c=sw ;; English) c=en ;; Français) c=fr ;; *) return 0 ;; esac
+    cmd_set "$c" >/dev/null || return 1
+    s="$(t saved "$c" "$(name_of "$c")")  $(t relogin "$c")"
+    [ -n "$(t partial "$c")" ] && s="$s"$'\n\n'"$(t partial "$c")"
+    zenity --title="$(t title)" --width=380 --info --text="$s" 2>/dev/null
+    if command -v xfce4-session-logout >/dev/null 2>&1 && zenity --title="$(t title)" --question --text="$(t logout "$c")" 2>/dev/null; then
+        xfce4-session-logout --logout
+    fi
+}
+
+cmd_check() {
+    local ok=0 bad=0 loc p f
+    for loc in sw_TZ en_US fr_FR; do
+        if have_locale "$loc.utf8"; then echo "UHURU-I18N locale $loc=ok"; ok=$((ok+1)); else echo "UHURU-I18N locale $loc=HAIPO"; bad=$((bad+1)); fi
+    done
+    for p in hunspell-sw hunspell-fr firefox-esr-l10n-fr libreoffice-l10n-fr; do
+        if dpkg -s "$p" >/dev/null 2>&1; then echo "UHURU-I18N kifurushi $p=ok"; ok=$((ok+1)); else echo "UHURU-I18N kifurushi $p=HAIPO"; bad=$((bad+1)); fi
+    done
+    for f in /usr/local/lib/uhuru/wizard-i18n.sh /usr/local/sbin/uhuru-set-locale /etc/X11/Xsession.d/45uhuru-lang /usr/local/bin/uhuru-lugha; do
+        if [ -e "$f" ]; then echo "UHURU-I18N faili $(basename "$f")=ok"; ok=$((ok+1)); else echo "UHURU-I18N faili $(basename "$f")=HAIPO"; bad=$((bad+1)); fi
+    done
+    echo "UHURU-I18N mfumo=$(system_code) mtumiaji=$(user_code || true) sasa=$(current)"
+    echo "UHURU-I18N jumla ok=$ok haipo=$bad"
+    return 0
+}
+
+case "$1" in
+    "")        cmd_gui ;;
+    --list)    cmd_list ;;
+    --get)     current; echo ;;
+    --set)     cmd_set "$2" ;;
+    --system)  cmd_system "$2" ;;
+    --check)   cmd_check ;;
+    -h|--help) sed -n '2,10p' "$0" ;;
+    *)         echo "uhuru-lugha: chaguo '$1' halijulikani (--help)" >&2; exit 2 ;;
+esac

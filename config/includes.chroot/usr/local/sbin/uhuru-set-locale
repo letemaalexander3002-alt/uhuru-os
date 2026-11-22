@@ -1,0 +1,36 @@
+#!/bin/sh
+# Uhuru OS v19.0: weka lugha ya MFUMO (chaguo-msingi ya kila mtumiaji mpya na ya skrini ya kuingia).
+# Matumizi (root):  uhuru-set-locale sw|en|fr
+# Msimbo wa kutoka: 0 sawa, 2 code haijulikani, 3 locale haikuweza kutengenezwa, 4 si root.
+# Majaribio: UHURU_LOCALE_FILE (badala ya /etc/default/locale), UHURU_LOCALE_NOGEN=1 (usitengeneze locale).
+FILE=${UHURU_LOCALE_FILE:-/etc/default/locale}
+SETUP=${UHURU_LOCALE_SETUP:-/usr/local/sbin/uhuru-locale-setup}
+code=$1
+case "$code" in
+    sw) loc=sw_TZ.UTF-8; lng=sw_TZ:sw:en_US:en ;;
+    en) loc=en_US.UTF-8; lng=en_US:en ;;
+    fr) loc=fr_FR.UTF-8; lng=fr_FR:fr:en_US:en ;;
+    *) echo "uhuru-set-locale: lugha haijulikani '$code' (tumia sw, en au fr)" >&2; exit 2 ;;
+esac
+if [ -z "$UHURU_LOCALE_FILE" ] && [ "$(id -u)" != 0 ]; then
+    echo "uhuru-set-locale: inahitaji root (tumia sudo)" >&2; exit 4
+fi
+
+have() { locale -a 2>/dev/null | grep -qix "$(printf '%s' "$1" | sed 's/UTF-8/utf8/')"; }
+if ! have "$loc" && [ "$UHURU_LOCALE_NOGEN" != 1 ]; then
+    tmp=$(mktemp) || exit 3
+    printf 'LANG=%s\n' "$loc" > "$tmp"
+    UHURU_LOCALE_DEFAULT=$tmp "$SETUP" >/dev/null 2>&1
+    rm -f "$tmp"
+fi
+if [ "$UHURU_LOCALE_NOGEN" != 1 ] && ! have "$loc"; then
+    echo "uhuru-set-locale: locale $loc haikutengenezwa" >&2; exit 3
+fi
+
+new=$(mktemp "${FILE}.XXXXXX" 2>/dev/null || mktemp) || exit 3
+if [ -r "$FILE" ]; then grep -vE '^(LANG|LANGUAGE)=' "$FILE" > "$new" 2>/dev/null; fi
+printf 'LANG=%s\nLANGUAGE=%s\n' "$loc" "$lng" >> "$new"
+chmod 0644 "$new"
+mv -f "$new" "$FILE" || { rm -f "$new"; exit 3; }
+echo "UHURU-LANG ok $code ($loc)"
+exit 0

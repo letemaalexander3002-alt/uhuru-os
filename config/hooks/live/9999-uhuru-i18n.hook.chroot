@@ -1,0 +1,25 @@
+#!/bin/sh
+# Uhuru OS v19.0: lugha. Haivunji build: kila kosa linaishia onyo, exit 0.
+# 1) ruhusa za faili mpya  2) vifurushi vya lugha (hunspell Kiswahili/Kifaransa, Firefox na LibreOffice ya Kifaransa)
+# 3) locale ya Kifaransa inatengenezwa wakati wa BUILD (haigharimu muda wa boot).
+chmod 0755 /usr/local/bin/uhuru-lugha /usr/local/sbin/uhuru-set-locale 2>/dev/null || true
+chmod 0644 /usr/local/lib/uhuru/wizard-i18n.sh /etc/X11/Xsession.d/45uhuru-lang 2>/dev/null || true
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq >/dev/null 2>&1 || echo "uhuru-i18n: ONYO: apt-get update imeshindikana"
+for p in hunspell-sw hunspell-fr firefox-esr-l10n-fr libreoffice-l10n-fr; do
+    if dpkg -s "$p" >/dev/null 2>&1; then echo "uhuru-i18n: $p tayari ipo"; continue; fi
+    if apt-cache show "$p" >/dev/null 2>&1 && apt-get install -y --no-install-recommends "$p" >/dev/null 2>&1; then
+        echo "uhuru-i18n: imewekwa $p"
+    else
+        echo "uhuru-i18n: ONYO: $p haikuwekwa (haipo kwenye repo au imeshindikana)"
+    fi
+done
+if [ -f /usr/share/i18n/locales/fr_FR ]; then
+    localedef -c -i fr_FR -f UTF-8 fr_FR.UTF-8 >/dev/null 2>&1
+    if locale -a 2>/dev/null | grep -qix 'fr_FR.utf8'; then echo "uhuru-i18n: locale fr_FR.UTF-8 imetengenezwa"; else echo "uhuru-i18n: ONYO: fr_FR.UTF-8 haikutengenezwa"; fi
+else
+    echo "uhuru-i18n: ONYO: data ya locale fr_FR haipo"
+fi
+/usr/local/sbin/uhuru-locale-setup || true
+echo "uhuru-i18n: lugha zimewekwa (sw, en, fr)"
+exit 0

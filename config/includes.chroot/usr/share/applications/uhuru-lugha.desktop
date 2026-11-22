@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Lugha
+Name[en]=Language
+Name[fr]=Langue
+Comment=Chagua lugha ya akaunti yako (Kiswahili, English, Français)
+Comment[en]=Choose your account language (Swahili, English, French)
+Comment[fr]=Choisissez la langue de votre compte (swahili, anglais, français)
+Exec=/usr/local/bin/uhuru-lugha
+Icon=preferences-desktop-locale
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=lugha;language;langue;locale;kiswahili;english;français;

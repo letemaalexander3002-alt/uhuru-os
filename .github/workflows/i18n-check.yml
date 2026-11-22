@@ -1,0 +1,26 @@
+name: i18n-check
+# Majaribio ya lugha (v19.0): hayajengi ISO; yanaendeshwa kwa sekunde chache kila unapobadilisha faili za lugha au wizard.
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "config/includes.chroot/usr/local/bin/uhuru-setup"
+      - "config/includes.chroot/usr/local/bin/uhuru-lugha"
+      - "config/includes.chroot/usr/local/lib/uhuru/**"
+      - "config/includes.chroot/usr/local/sbin/uhuru-set-locale"
+      - "config/includes.chroot/etc/X11/Xsession.d/45uhuru-lang"
+      - "config/hooks/live/9999-uhuru-i18n.hook.chroot"
+      - "scripts/i18n-selftest.sh"
+      - "tests/i18n/**"
+      - ".github/workflows/i18n-check.yml"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  i18n:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq dash python3 desktop-file-utils
+      - name: Majaribio ya lugha na wizard
+        run: bash scripts/i18n-selftest.sh

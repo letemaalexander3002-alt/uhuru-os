@@ -9,6 +9,10 @@ command -v zenity >/dev/null 2>&1 || exit 0
 if command -v xset >/dev/null 2>&1; then xset r off 2>/dev/null; trap 'xset r on 2>/dev/null' EXIT; fi
 
 TITLE="Uhuru OS - Karibu"
+# v19.0: tafsiri za wizard (en/fr). Kiswahili hakibadiliki. Maktaba ikikosekana, hakuna kinachobadilika.
+UWZ_LANG=""
+[ -r /usr/local/lib/uhuru/wizard-i18n.sh ] && . /usr/local/lib/uhuru/wizard-i18n.sh
+type uwz_tr >/dev/null 2>&1 || uwz_tr() { printf '%s' "$1"; }
 z() { zenity --title="$TITLE" --width=440 "$@"; }
 
 # v13.11: kila dirisha linaandika jina la hatua kwenye /run/uhuru-setup.step (faili hiyo ipo kwenye CI tu; vinginevyo hakuna athari).
@@ -32,6 +36,12 @@ z() {
         *"Akaunti yako imetengenezwa"*) s=final ;;
     esac
     step "$s"
+    if [ "$UWZ_LANG" = en ] || [ "$UWZ_LANG" = fr ]; then
+        local a out=()
+        for a in "$@"; do out+=("$(uwz_tr "$a")"); done
+        zenity --title="$(uwz_tr "$TITLE")" --width=440 "${out[@]}"
+        return
+    fi
     zenity --title="$TITLE" --width=440 "$@"
 }
 trap 'step none; command -v xset >/dev/null 2>&1 && xset r on 2>/dev/null' EXIT
@@ -65,6 +75,23 @@ ask_computer() {
         z --error --text="Jina la kompyuta litumie herufi ndogo, namba na - tu (hadi 31)."
     done
 }
+
+# v19.0: lugha ya wizard na ya mfumo. Kwenye CI hatua hii inarukwa (e2e inabaki ile ile).
+ask_lang() {
+    # CI: /run/uhuru-ci au /run/uhuru-setup.step (faili la hatua lipo kwenye CI tu): usionyeshe dirisha lisilojulikana kwa harness
+    if [ -e /run/uhuru-ci ] || [ -w /run/uhuru-setup.step ]; then return 0; fi
+    command -v zenity >/dev/null 2>&1 || return 0
+    type uwz_set >/dev/null 2>&1 || return 0
+    local pick code
+    pick=$(zenity --title="Uhuru OS" --width=440 --height=300 --list --radiolist \
+        --text="Chagua lugha / Choose your language / Choisissez votre langue:" \
+        --column="" --column="Lugha / Language / Langue" --print-column=2 --hide-header \
+        TRUE Kiswahili FALSE English FALSE "Français") || return 0
+    case "$pick" in English) code=en ;; "Français") code=fr ;; *) code=sw ;; esac
+    uwz_set "$code" || return 0
+    [ "$code" = sw ] || sudo -n /usr/local/sbin/uhuru-set-locale "$code" >/dev/null 2>&1 || true
+}
+ask_lang
 
 z --info --text="<b>Karibu Uhuru OS</b>\n\nTutafanya usanidi mfupi: eneo, jina la kompyuta, mtandao na akaunti yako.\n\nImetengenezwa na Letema Group Tech." --ok-label="Anza" || true
 

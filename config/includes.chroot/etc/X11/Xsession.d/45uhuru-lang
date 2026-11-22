@@ -1,0 +1,18 @@
+# Uhuru OS v19.0: lugha ya akaunti ya mtumiaji (iliyochaguliwa kwa `uhuru-lugha`). Inapakiwa na /etc/X11/Xsession kabla ya session.
+# Bila faili la mtumiaji, lugha ya mfumo (/etc/default/locale) inatumika kama kawaida.
+uhuru_pref="${UHURU_LANG_HOME:-$HOME}/.config/uhuru/lang"
+if [ -r "$uhuru_pref" ]; then
+    uhuru_code=$(sed -n '1{s/[^a-z]//g;p;q}' "$uhuru_pref" 2>/dev/null)
+    case "$uhuru_code" in
+        sw) uhuru_loc=sw_TZ.UTF-8; uhuru_lng=sw_TZ:sw:en_US:en ;;
+        en) uhuru_loc=en_US.UTF-8; uhuru_lng=en_US:en ;;
+        fr) uhuru_loc=fr_FR.UTF-8; uhuru_lng=fr_FR:fr:en_US:en ;;
+        *) uhuru_loc="" ;;
+    esac
+    if [ -n "$uhuru_loc" ] && locale -a 2>/dev/null | grep -qix "$(printf '%s' "$uhuru_loc" | sed 's/UTF-8/utf8/')"; then
+        LANG=$uhuru_loc
+        LANGUAGE=$uhuru_lng
+        export LANG LANGUAGE
+    fi
+fi
+unset uhuru_pref uhuru_code uhuru_loc uhuru_lng

@@ -1,0 +1,119 @@
+#!/bin/bash
+# Uhuru OS — usanidi wa kwanza (kama Windows OOBE): saa, jina la kompyuta, mtandao, akaunti.
+# Inaendeshwa kwenye live session pekee, mara moja.
+grep -q 'boot=live' /proc/cmdline || exit 0
+[ -e /var/lib/uhuru-setup.done ] && exit 0
+command -v zenity >/dev/null 2>&1 || exit 0
+
+# Kwenye VM polepole herufi hurudiwa zenyewe (key auto-repeat) na password huandikwa vibaya: izime wakati wa usajili
+if command -v xset >/dev/null 2>&1; then xset r off 2>/dev/null; trap 'xset r on 2>/dev/null' EXIT; fi
+
+TITLE="Uhuru OS - Karibu"
+z() { zenity --title="$TITLE" --width=440 "$@"; }
+
+# v13.11: kila dirisha linaandika jina la hatua kwenye /run/uhuru-setup.step (faili hiyo ipo kwenye CI tu; vinginevyo hakuna athari).
+STEPF=/run/uhuru-setup.step
+step() { [ -w "$STEPF" ] && printf '%s' "$1" > "$STEPF"; return 0; }
+z() {
+    local s=other
+    case "$*" in
+        *--error*)                      s=error ;;
+        *"Tutafanya usanidi"*)          s=welcome ;;
+        *"Chagua eneo lako"*)           s=tz ;;
+        *"Jina la kompyuta hii"*)       s=computer ;;
+        *"Unataka kuunganisha"*)        s=wifi ;;
+        *"Jina lako kamili"*)           s=fullname ;;
+        *"Chagua jina la kuingia"*)     s=username ;;
+        *"Weka password"*)              s=pass1 ;;
+        *"Rudia password"*)             s=pass2 ;;
+        *"Unataka kuiona ili"*)         s=confirm ;;
+        *"Password yako ni:"*)          s=pshow ;;
+        *"Uingie moja kwa moja"*)       s=autologin ;;
+        *"Akaunti yako imetengenezwa"*) s=final ;;
+    esac
+    step "$s"
+    zenity --title="$TITLE" --width=440 "$@"
+}
+trap 'step none; command -v xset >/dev/null 2>&1 && xset r on 2>/dev/null' EXIT
+
+TZSEL="Africa/Dar_es_Salaam"
+COMPUTER="uhuru-pc"
+
+ask_tz() {
+    local pick
+    pick=$(z --list --radiolist --height=420 --text="Chagua eneo lako (saa):" \
+        --column="" --column="Eneo" --column="Nchi" --print-column=2 --hide-header \
+        TRUE  Africa/Dar_es_Salaam "Tanzania" \
+        FALSE Africa/Nairobi       "Kenya" \
+        FALSE Africa/Kampala       "Uganda" \
+        FALSE Africa/Kigali        "Rwanda" \
+        FALSE Africa/Lusaka        "Zambia" \
+        FALSE Africa/Maputo        "Msumbiji" \
+        FALSE Africa/Johannesburg  "Afrika Kusini" \
+        FALSE Africa/Lagos         "Nigeria" \
+        FALSE Europe/London        "Uingereza" \
+        FALSE Asia/Dubai           "Falme za Kiarabu" \
+        FALSE UTC                  "UTC") || return 0
+    [ -n "$pick" ] && TZSEL="$pick"
+}
+
+ask_computer() {
+    local name
+    while :; do
+        name=$(z --entry --text="Jina la kompyuta hii (herufi ndogo, namba na -):" --entry-text="$COMPUTER") || return 0
+        if printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9-]{0,30}$'; then COMPUTER="$name"; return 0; fi
+        z --error --text="Jina la kompyuta litumie herufi ndogo, namba na - tu (hadi 31)."
+    done
+}
+
+z --info --text="<b>Karibu Uhuru OS</b>\n\nTutafanya usanidi mfupi: eneo, jina la kompyuta, mtandao na akaunti yako.\n\nImetengenezwa na Letema Group Tech." --ok-label="Anza" || true
+
+ask_tz
+ask_computer
+
+if [ ! -e /run/uhuru-ci ] && command -v nm-connection-editor >/dev/null 2>&1; then
+    if z --question --text="Unataka kuunganisha mtandao (Wi-Fi) sasa?\n\nUkimaliza, funga dirisha la mitandao." --ok-label="Ndiyo" --cancel-label="Baadaye"; then
+        nm-connection-editor
+    fi
+fi
+
+while :; do
+    FULLNAME=$(z --entry --text="Jina lako kamili:") || continue
+    [ -n "$FULLNAME" ] || { z --error --text="Weka jina lako."; continue; }
+
+    USERNAME=$(z --entry --text="Chagua jina la kuingia (herufi ndogo, namba, - au _; angalau 3):") || continue
+    printf '%s' "$USERNAME" | grep -Eq '^[a-z][a-z0-9_-]{2,30}$' || {
+        z --error --text="Jina la kuingia lianze kwa herufi ndogo; litumie herufi ndogo, namba, - au _ (3 hadi 31)."; continue; }
+
+    PASS1=$(z --password --text="Weka password (angalau herufi 8):") || continue
+    [ "${#PASS1}" -ge 8 ] || { z --error --text="Password iwe angalau herufi 8."; continue; }
+    PASS2=$(z --password --text="Rudia password:") || continue
+    [ "$PASS1" = "$PASS2" ] || { z --error --text="Password hazilingani. Jaribu tena."; continue; }
+
+    # Kuhakikisha hukukosea: onyesha idadi ya herufi, na uone password ukitaka
+    if z --question --no-markup --ok-label="Nionyeshe" --cancel-label="Endelea" \
+        --text="Password yako ina herufi ${#PASS1}.\n\nUnataka kuiona ili kuhakikisha uliandika sahihi?"; then
+        z --info --no-markup --ok-label="Sawa" --text="Password yako ni:\n\n$PASS1\n\nIkumbuke au iandike mahali salama."
+    fi
+
+    AUTOLOGIN=no
+    if z --question --default-cancel --ok-label="Ndiyo" --cancel-label="Hapana (inashauriwa)" \
+        --text="Uingie moja kwa moja bila kuandika password kila kompyuta inapowashwa?\n\nHaishauriwi kama kompyuta inatumiwa na watu wengine."; then
+        AUTOLOGIN=yes
+    fi
+
+    step creating
+    printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$FULLNAME" "$USERNAME" "$PASS1" "$COMPUTER" "$TZSEL" "$AUTOLOGIN" \
+        | sudo -n /usr/local/sbin/uhuru-create-user 2>>/tmp/uhuru-create-user.log
+    RC=$?; step "rc-$RC"
+    unset PASS1 PASS2
+    case "$RC" in
+        0) z --info --text="Akaunti yako imetengenezwa.\n\nJina lako la kuingia: <b>$USERNAME</b>\n\nSasa utaelekezwa kwenye skrini ya kuingia. Andika jina hilo na password uliyochagua." ; exit 0 ;;
+        2) z --error --text="Jina la kuingia si sahihi." ;;
+        3) z --error --text="Jina hilo limeshatumika. Chagua jingine." ;;
+        4) z --error --text="Password ni fupi mno." ;;
+        5) z --error --text="Jina la kompyuta si sahihi."; ask_computer ;;
+        6) z --error --text="Eneo si sahihi. Chagua tena."; ask_tz ;;
+        *) z --error --text="Imeshindikana kutengeneza akaunti (kosa $RC). Jaribu tena." ;;
+    esac
+done
