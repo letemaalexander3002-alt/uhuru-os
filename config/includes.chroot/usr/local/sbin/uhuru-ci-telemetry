@@ -16,7 +16,12 @@ RUNDIR=${UHURU_TEST_RUN:-/run}
 : > "$RUNDIR/uhuru-ci"; chmod 0644 "$RUNDIR/uhuru-ci"
 : > "$RUNDIR/uhuru-setup.step"; chmod 0666 "$RUNDIR/uhuru-setup.step"
 # emit: andika maandishi kwenye serial kwa kufungua upya kila mara (tee -a, chini ya timeout kama ufunguzi ukining'inia).
-emit() { printf '%s\n' "$1" | timeout -k 1 3 tee -a "$SERIAL" >/dev/null 2>&1; }
+# v19.2: waandishi wa nyuma (P4..P9, DIAG) wanaandika kwenye serial moja; flock inahakikisha kila ujumbe unaandikwa mzima kabla ya mwingine
+# (v19.1: mstari wa P7 ulibandikana ndani ya mstari wa DIAG na hukumu ikaupoteza). flock ikikosekana au /run isipoandikika, tunaandika kama zamani.
+emit() {
+    ( flock -w 30 9 2>/dev/null; printf '%s\n' "$1" | timeout -k 1 3 tee -a "$SERIAL" >/dev/null 2>&1; exit 0 ) 2>/dev/null 9>"$RUNDIR/uhuru-emit.lock" \
+        || printf '%s\n' "$1" | timeout -k 1 3 tee -a "$SERIAL" >/dev/null 2>&1
+}
 
 # Orodha ya watumiaji wa session, kwa kusoma faili za logind moja kwa moja (bila D-Bus).
 # Faili za *.ref ni FIFO (kuzisoma kunaning'inia), kwa hiyo tunasoma faili za kawaida tu.

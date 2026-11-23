@@ -1,0 +1,30 @@
+name: karibu-check
+# Majaribio ya Karibu Uhuru, pakiti za programu na telemetry (v19.2): hayajengi ISO; yanaendeshwa kwa sekunde chache.
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "config/includes.chroot/usr/local/bin/uhuru-karibu"
+      - "config/includes.chroot/usr/local/bin/uhuru-pakiti"
+      - "config/includes.chroot/usr/share/uhuru/packs/**"
+      - "config/includes.chroot/etc/xdg/autostart/uhuru-karibu.desktop"
+      - "config/includes.chroot/usr/share/applications/uhuru-karibu.desktop"
+      - "config/includes.chroot/usr/local/sbin/uhuru-ci-telemetry"
+      - "scripts/e2e-verdict.sh"
+      - "scripts/karibu-selftest.sh"
+      - "scripts/telemetry-selftest.sh"
+      - "scripts/v192-postcheck.sh"
+      - ".github/workflows/karibu-check.yml"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  karibu:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq desktop-file-utils util-linux
+      - name: Majaribio ya Karibu Uhuru na pakiti
+        run: bash scripts/karibu-selftest.sh
+      - name: Majaribio ya telemetry na hukumu ya e2e
+        run: bash scripts/telemetry-selftest.sh

@@ -143,6 +143,7 @@ DESKTOP_I18N = {
     "uhuru-about": ("About Uhuru OS", "À propos d'Uhuru OS", "Information about this system", "Informations sur ce système"),
     "uhuru-installer": ("Install Uhuru OS", "Installer Uhuru OS", "Install Uhuru OS on this computer", "Installer Uhuru OS sur cet ordinateur"),
     "uhuru-selftest": ("System self-test", "Auto-diagnostic du système", "Run the Uhuru OS self-test", "Lancer l'auto-diagnostic d'Uhuru OS"),
+    "uhuru-karibu": ("Welcome to Uhuru", "Bienvenue dans Uhuru", "Short tour: language, appearance, extra apps and security", "Court tour : langue, apparence, applications supplémentaires et sécurité"),
     "uhuru-mwonekano": ("Appearance", "Apparence", "Switch between light and dark look", "Passer du mode clair au mode sombre"),
     "uhuru-dev": ("Developer tools", "Outils de développement", "Uhuru Dev Edition tools", "Outils de l'édition Uhuru Dev"),
     "uhuru-terminal": ("Uhuru Terminal", "Terminal Uhuru", "Command line", "Ligne de commande"),

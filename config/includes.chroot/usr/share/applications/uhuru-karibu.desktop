@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Karibu Uhuru
+Name[en]=Welcome to Uhuru
+Name[fr]=Bienvenue dans Uhuru
+Comment=Ziara fupi: lugha, mwonekano, programu za kuongeza na usalama
+Comment[en]=Short tour: language, appearance, extra apps and security
+Comment[fr]=Court tour : langue, apparence, applications supplémentaires et sécurité
+Exec=/usr/local/bin/uhuru-karibu --again
+Icon=uhuru-os-logo
+Terminal=false
+Categories=Utility;
+Keywords=karibu;welcome;bienvenue;pakiti;packs;

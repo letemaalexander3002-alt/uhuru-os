@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Karibu Uhuru
+Name[en]=Welcome to Uhuru
+Name[fr]=Bienvenue dans Uhuru
+Comment=Ziara fupi ya mara ya kwanza
+Comment[en]=Short first-run tour
+Comment[fr]=Court tour de première utilisation
+Exec=/usr/local/bin/uhuru-karibu
+Icon=uhuru-os-logo
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=8

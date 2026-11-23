@@ -1,0 +1,10 @@
+# Uhuru OS v19.2: pakiti ya programu (angalia ofisi.pack kwa maelezo ya muundo).
+# Zana nyingi za wasanidi (git, gcc, node, python, cmake) tayari zipo kwenye ISO; hapa ni nyongeza tu.
+id=wasanidi
+jina_sw=Wasanidi
+jina_en=Developers
+jina_fr=Développeurs
+maelezo_sw=Kihariri cha msimbo (Geany), lugha ya Go na Java (JDK)
+maelezo_en=Code editor (Geany), the Go language and Java (JDK)
+maelezo_fr=Éditeur de code (Geany), langage Go et Java (JDK)
+vifurushi=geany golang-go default-jdk-headless

@@ -8,7 +8,8 @@ FAILS=0
 has() { grep -q "$1" "$E" 2>/dev/null; }
 ck()  { if has "$1"; then echo "CHECK PASS: e2e: $2"; else echo "CHECK FAIL: e2e: $3"; FAILS=$((FAILS+1)); fi; }
 fail(){ echo "CHECK FAIL: e2e: $1"; FAILS=$((FAILS+1)); }
-slogc() { tr -d '\r' < "$LOG" 2>/dev/null; }
+# v19.2: mistari miwili ya serial ikiandikwa kwa wakati mmoja inaweza kubandikana (k.m. "UHURU-DIAG lightdmUHURU-P7 ..."). Tunatenganisha kabla ya kusoma.
+slogc() { tr -d '\r' < "$LOG" 2>/dev/null | sed -E 's/([^[:space:]])(UHURU-(STATE|ACCOUNTS|AUTH|DIAG|P[0-9]+) )/\1\n\2/g'; }
 details() {
     echo "--- alama za automation (e2e.log) ---"; cat "$E"
     echo "--- njia ya kuingia iliyofanya kazi kwenye login screen ---"

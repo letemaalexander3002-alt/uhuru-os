@@ -1,0 +1,210 @@
+#!/bin/bash
+# Uhuru OS v19.2: Karibu Uhuru: ziara ya mara ya kwanza (lugha, mwonekano, mtandao, pakiti za programu, usalama, Duka na Share).
+#   uhuru-karibu           anza yenyewe ukiingia mara ya kwanza (inarukwa kwa akaunti ya live 'mtumiaji', kwenye CI, na ikishakamilika)
+#   uhuru-karibu --again   fungua tena kutoka menyu (hairuki ikishakamilika)
+#   uhuru-karibu --check   ripoti ya zana zinazohitajika (kwa CI / VM): KARIBU-OK,...
+# Kila hatua inaweza kurukwa (Funga/Cancel). "Baadaye" kwenye dirisha la kwanza halihifadhi kukamilika: itaonekana tena ukiingia.
+# Mazingira ya majaribio: UHURU_ZENITY, UHURU_KARIBU_BIN, UHURU_XFCONF, UHURU_KARIBU_DONE, UHURU_KARIBU_LIVE, UHURU_KARIBU_LIVEUSER,
+# UHURU_KARIBU_CI (faili za alama za CI, zikiwa na nafasi), UHURU_WALLPAPER_DIR, UHURU_KARIBU_NONET.
+set -u
+ZEN=${UHURU_ZENITY:-zenity}
+BIN=${UHURU_KARIBU_BIN:-/usr/local/bin}
+XQ=${UHURU_XFCONF:-xfconf-query}
+DONE=${UHURU_KARIBU_DONE:-$HOME/.config/uhuru/karibu.done}
+WPDIR=${UHURU_WALLPAPER_DIR:-/usr/share/backgrounds/uhuru}
+ROTOFF="$HOME/.config/uhuru/no-wallpaper-rotate"
+LIVEUSER=${UHURU_KARIBU_LIVEUSER:-mtumiaji}
+CIFILES=${UHURU_KARIBU_CI:-/run/uhuru-ci /run/uhuru-setup.step}
+MODE=${1:-auto}
+
+lang_now() {
+    local c=""
+    [ -x "$BIN/uhuru-lugha" ] && c=$("$BIN/uhuru-lugha" --get 2>/dev/null | head -n 1 | tr -dc 'a-z')
+    case "$c" in sw|en|fr) printf '%s' "$c" ;; *) case "${LANGUAGE:-${LANG:-}}" in fr*) printf fr ;; en*) printf en ;; *) printf sw ;; esac ;; esac
+}
+L=$(lang_now)
+
+t() {   # t KEY: ujumbe (sec_stat ina %%s mbili-mbili ili printf ya baadaye ijaze); ujumbe katika lugha ya sasa ($L). Tafsiri za en/fr: msaidizi wa AI, zikaguliwe na mzungumzaji wa asili.
+    case "$1:$L" in
+        title:sw) printf 'Karibu Uhuru' ;; title:en) printf 'Welcome to Uhuru' ;; title:fr) printf 'Bienvenue dans Uhuru' ;;
+        welcome:sw) printf '<b>Karibu Uhuru OS</b>\n\nTufanye ziara fupi ya hatua chache: lugha, mwonekano, mtandao, programu za kuongeza, usalama na zana kuu.\n\nKila hatua unaweza kuiruka.' ;;
+        welcome:en) printf '<b>Welcome to Uhuru OS</b>\n\nLet us take a short tour: language, appearance, network, extra apps, security and the main tools.\n\nYou can skip any step.' ;;
+        welcome:fr) printf '<b>Bienvenue dans Uhuru OS</b>\n\nFaisons un court tour : langue, apparence, réseau, applications supplémentaires, sécurité et outils principaux.\n\nVous pouvez passer chaque étape.' ;;
+        start:sw) printf 'Anza' ;; start:en) printf 'Start' ;; start:fr) printf 'Commencer' ;;
+        later:sw) printf 'Baadaye' ;; later:en) printf 'Later' ;; later:fr) printf 'Plus tard' ;;
+        lang_ask:sw) printf 'Chagua lugha ya akaunti yako:' ;; lang_ask:en) printf 'Choose your account language:' ;; lang_ask:fr) printf 'Choisissez la langue de votre compte :' ;;
+        lang_note:sw) printf 'Lugha imehifadhiwa. Itatumika kikamilifu ukiingia tena.' ;; lang_note:en) printf 'Language saved. It will apply fully the next time you sign in.' ;; lang_note:fr) printf 'Langue enregistrée. Elle s'"'"'appliquera pleinement à la prochaine connexion.' ;;
+        mode_ask:sw) printf 'Chagua mwonekano wa desktop:' ;; mode_ask:en) printf 'Choose the desktop look:' ;; mode_ask:fr) printf 'Choisissez l'"'"'apparence du bureau :' ;;
+        light:sw) printf 'Mwanga (Light)' ;; light:en) printf 'Light' ;; light:fr) printf 'Clair' ;;
+        dark:sw) printf 'Giza (Dark)' ;; dark:en) printf 'Dark' ;; dark:fr) printf 'Sombre' ;;
+        wall_ask:sw) printf 'Chagua wallpaper:' ;; wall_ask:en) printf 'Choose a wallpaper:' ;; wall_ask:fr) printf 'Choisissez un fond d'"'"'écran :' ;;
+        wall_rot:sw) printf 'Zibadilike zenyewe (mzunguko)' ;; wall_rot:en) printf 'Rotate automatically' ;; wall_rot:fr) printf 'Alterner automatiquement' ;;
+        net_ask:sw) printf 'Unataka kuunganisha mtandao (Wi-Fi) sasa?\n\nUkimaliza, funga dirisha la mitandao.' ;; net_ask:en) printf 'Do you want to connect to a network (Wi-Fi) now?\n\nWhen you are done, close the network window.' ;; net_ask:fr) printf 'Voulez-vous vous connecter à un réseau (Wi-Fi) maintenant ?\n\nQuand vous avez fini, fermez la fenêtre des réseaux.' ;;
+        yes:sw) printf 'Ndiyo' ;; yes:en) printf 'Yes' ;; yes:fr) printf 'Oui' ;;
+        notnow:sw) printf 'Baadaye' ;; notnow:en) printf 'Later' ;; notnow:fr) printf 'Plus tard' ;;
+        packs_ask:sw) printf 'Ongeza programu kwa pakiti (zinahitaji mtandao):' ;; packs_ask:en) printf 'Add apps by pack (internet required):' ;; packs_ask:fr) printf 'Ajoutez des applications par pack (Internet requis) :' ;;
+        packs_cols:sw) printf 'Pakiti|Maelezo|Zilizopo' ;; packs_cols:en) printf 'Pack|Description|Installed' ;; packs_cols:fr) printf 'Pack|Description|Installé' ;;
+        packs_live:sw) printf 'Uko kwenye hali ya <b>live</b> (bila kusakinisha kwenye diski): programu utakazoongeza zitapotea ukizima kompyuta, na zinatumia RAM.\n\nUnataka kuendelea?' ;;
+        packs_live:en) printf 'You are in <b>live</b> mode (not installed on disk): added apps are lost when you shut down, and use RAM.\n\nContinue anyway?' ;;
+        packs_live:fr) printf 'Vous êtes en mode <b>live</b> (non installé sur le disque) : les applications ajoutées seront perdues à l'"'"'extinction et utilisent la RAM.\n\nContinuer quand même ?' ;;
+        packs_nonet:sw) printf 'Hakuna mtandao. Unganisha mtandao kisha fungua tena Karibu Uhuru kutoka menyu ili kuongeza pakiti.' ;; packs_nonet:en) printf 'No network. Connect to a network, then reopen Welcome from the menu to add packs.' ;; packs_nonet:fr) printf 'Pas de réseau. Connectez-vous, puis rouvrez Bienvenue depuis le menu pour ajouter des packs.' ;;
+        packs_busy:sw) printf 'Napakua na kusakinisha programu... Subiri.' ;; packs_busy:en) printf 'Downloading and installing apps... Please wait.' ;; packs_busy:fr) printf 'Téléchargement et installation... Veuillez patienter.' ;;
+        packs_ok:sw) printf 'Pakiti zimesakinishwa.' ;; packs_ok:en) printf 'Packs installed.' ;; packs_ok:fr) printf 'Packs installés.' ;;
+        packs_cancel:sw) printf 'Umeghairi au huna ruhusa ya msimamizi.' ;; packs_cancel:en) printf 'Cancelled, or administrator permission was not granted.' ;; packs_cancel:fr) printf 'Annulé, ou autorisation administrateur refusée.' ;;
+        packs_fail:sw) printf 'Kusakinisha kumeshindikana. Jaribu tena baadaye kutoka menyu ya Karibu Uhuru.' ;; packs_fail:en) printf 'Installation failed. Try again later from the Welcome menu entry.' ;; packs_fail:fr) printf 'L'"'"'installation a échoué. Réessayez plus tard depuis le menu Bienvenue.' ;;
+        sec_text:sw) printf '<b>Usalama wako</b>\n\nUhuru ina ngome ya moto na ulinzi wa USB kwa chaguo-msingi. Kituo cha Ulinzi kinakuonyesha hali yake kwa muhtasari.' ;;
+        sec_text:en) printf '<b>Your security</b>\n\nUhuru ships with a firewall and USB protection by default. The Security Center shows their status at a glance.' ;;
+        sec_text:fr) printf '<b>Votre sécurité</b>\n\nUhuru inclut un pare-feu et une protection USB par défaut. Le Centre de sécurité affiche leur état en un coup d'"'"'œil.' ;;
+        sec_stat:sw) printf 'Hali: vipengele %%s, vizuri %%s, tahadhari %%s, hatari %%s.' ;; sec_stat:en) printf 'Status: %%s checks, %%s good, %%s warnings, %%s risks.' ;; sec_stat:fr) printf 'État : %%s contrôles, %%s bons, %%s avertissements, %%s risques.' ;;
+        sec_open:sw) printf 'Fungua Kituo cha Ulinzi' ;; sec_open:en) printf 'Open Security Center' ;; sec_open:fr) printf 'Ouvrir le Centre de sécurité' ;;
+        next:sw) printf 'Endelea' ;; next:en) printf 'Continue' ;; next:fr) printf 'Continuer' ;;
+        tour_text:sw) printf 'Zana kuu: <b>Duka la LGT</b> (programu), <b>Uhuru Share</b> (shiriki programu bila mtandao). Chagua cha kufungua, au Maliza.' ;;
+        tour_text:en) printf 'Main tools: <b>LGT Store</b> (apps), <b>Uhuru Share</b> (share apps without internet). Pick one to open, or Finish.' ;;
+        tour_text:fr) printf 'Outils principaux : <b>LGT Store</b> (applications), <b>Uhuru Share</b> (partage hors ligne). Choisissez-en un, ou Terminer.' ;;
+        tour_store:sw) printf 'Duka la LGT' ;; tour_store:en) printf 'LGT Store' ;; tour_store:fr) printf 'LGT Store' ;;
+        tour_share:sw) printf 'Uhuru Share' ;; tour_share:en) printf 'Uhuru Share' ;; tour_share:fr) printf 'Uhuru Share' ;;
+        finish:sw) printf 'Maliza' ;; finish:en) printf 'Finish' ;; finish:fr) printf 'Terminer' ;;
+        end_text:sw) printf '<b>Tayari!</b>\n\nUnaweza kufungua tena ziara hii wakati wowote kutoka menyu: <i>Karibu Uhuru</i>.' ;;
+        end_text:en) printf '<b>All set!</b>\n\nYou can reopen this tour any time from the menu: <i>Welcome to Uhuru</i>.' ;;
+        end_text:fr) printf '<b>Tout est prêt !</b>\n\nVous pouvez rouvrir cette visite à tout moment depuis le menu : <i>Bienvenue dans Uhuru</i>.' ;;
+    esac
+}
+
+say_err() { printf 'uhuru-karibu: %s\n' "$*" >&2; }
+have() { command -v "$1" >/dev/null 2>&1; }
+exe() { [ -x "$BIN/$1" ]; }
+z() { "$ZEN" --title="$(t title)" --width=460 "$@"; }
+
+# ---- hatua: ukaguzi
+if [ "$MODE" = "--check" ]; then
+    wp=0; for f in kilimanjaro zanzibar tanzanite kitenge tingatinga; do [ -f "$WPDIR/$f.png" ] && wp=$((wp+1)); done
+    pk=none; exe uhuru-pakiti && pk=$("$BIN/uhuru-pakiti" --check 2>&1 | tail -n 1)
+    r=KARIBU-OK; zz=yes
+    have "$ZEN" || { zz=no; r=KARIBU-FAIL; }
+    for b in uhuru-lugha uhuru-mwonekano uhuru-pakiti uhuru-protect uhuru-store uhuru-share; do exe "$b" || r=KARIBU-FAIL; done
+    [ "$wp" = 5 ] || r=KARIBU-FAIL
+    case "$pk" in PAKITI-OK*) ;; *) r=KARIBU-FAIL ;; esac
+    echo "$r,zenity=$zz,wallpapers=$wp,pakiti=$pk"
+    [ "$r" = KARIBU-OK ]; exit $?
+fi
+case "$MODE" in auto|--again) ;; *) say_err "hoja haijulikani: $MODE (tumia --again au --check)"; exit 2 ;; esac
+
+# ---- walinzi
+have "$ZEN" || exit 0
+[ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ] || exit 0
+if [ "$MODE" = auto ]; then
+    [ ! -e "$DONE" ] || exit 0
+    [ "$(id -un)" != "$LIVEUSER" ] || exit 0                         # akaunti ya live inaongozwa na wizard ya usajili, si na Karibu
+    for f in $CIFILES; do [ ! -e "$f" ] || exit 0; done              # CI: hakuna madirisha yasiyojulikana kwa harness ya e2e
+fi
+
+LIVE=${UHURU_KARIBU_LIVE:-}
+[ -n "$LIVE" ] || { grep -q 'boot=live' /proc/cmdline 2>/dev/null && LIVE=yes || LIVE=no; }
+
+stop_rotation() { pkill -u "$(id -u)" -f '/usr/local/bin/uhuru-wallpaper' 2>/dev/null; return 0; }
+apply_wallpaper() {   # apply_wallpaper FILE
+    local f=$1 p base n=0 props
+    have "$XQ" || return 0
+    props=$("$XQ" -c xfce4-desktop -l 2>/dev/null | grep 'last-image$')
+    [ -n "$props" ] || props="/backdrop/screen0/monitor0/workspace0/last-image"
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        base=${p%last-image}
+        "$XQ" -c xfce4-desktop -n -t string -p "$p" -s "$f" 2>/dev/null
+        "$XQ" -c xfce4-desktop -n -t int -p "${base}image-style" -s 5 2>/dev/null
+        n=$((n+1))
+    done <<< "$props"
+    return 0
+}
+
+# ---- 1) karibu
+z --question --text="$(t welcome)" --ok-label="$(t start)" --cancel-label="$(t later)" || exit 0
+
+# ---- 2) lugha
+if exe uhuru-lugha; then
+    pick=$(z --list --radiolist --height=300 --text="$(t lang_ask)" --column="" --column="" --print-column=2 --hide-header \
+        TRUE Kiswahili FALSE English FALSE "Français") && {
+        case "$pick" in English) code=en ;; "Français") code=fr ;; *) code=sw ;; esac
+        if "$BIN/uhuru-lugha" --set "$code" >/dev/null 2>&1; then L=$code; z --info --no-markup --text="$(t lang_note)" || true; fi
+    }
+fi
+
+# ---- 3) mwonekano na wallpaper
+if exe uhuru-mwonekano; then
+    mode=$(z --list --radiolist --height=260 --text="$(t mode_ask)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 \
+        TRUE light "$(t light)" FALSE dark "$(t dark)") && case "$mode" in light|dark) "$BIN/uhuru-mwonekano" "--$mode" >/dev/null 2>&1 || true ;; esac
+fi
+if [ -d "$WPDIR" ]; then
+    args=(TRUE rotate "$(t wall_rot)")
+    for w in kilimanjaro:Kilimanjaro zanzibar:Zanzibar tanzanite:Tanzanite kitenge:Kitenge tingatinga:Tingatinga; do
+        [ -f "$WPDIR/${w%%:*}.png" ] && args+=(FALSE "${w%%:*}" "${w##*:}")
+    done
+    wp=$(z --list --radiolist --height=360 --text="$(t wall_ask)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 "${args[@]}") && {
+        mkdir -p "$(dirname "$ROTOFF")" 2>/dev/null
+        case "$wp" in
+            rotate) rm -f "$ROTOFF"; if exe uhuru-wallpaper; then pgrep -u "$(id -u)" -f '/usr/local/bin/uhuru-wallpaper' >/dev/null 2>&1 || { setsid -f "$BIN/uhuru-wallpaper" >/dev/null 2>&1 || true; }; fi ;;
+            kilimanjaro|zanzibar|tanzanite|kitenge|tingatinga)
+                if [ -f "$WPDIR/$wp.png" ]; then : > "$ROTOFF"; stop_rotation; apply_wallpaper "$WPDIR/$wp.png"; fi ;;
+        esac
+    }
+fi
+
+# ---- 4) mtandao (hiari)
+if [ -z "${UHURU_KARIBU_NONET:-}" ] && have nm-connection-editor; then
+    if z --question --text="$(t net_ask)" --ok-label="$(t yes)" --cancel-label="$(t notnow)"; then nm-connection-editor || true; fi
+fi
+
+# ---- 5) pakiti za programu
+if exe uhuru-pakiti; then
+    rows=()
+    while IFS=$'\t' read -r id name desc cnt; do
+        [ -n "$id" ] && rows+=(FALSE "$id" "$name" "$desc" "$cnt")
+    done < <("$BIN/uhuru-pakiti" list 2>/dev/null)
+    if [ "${#rows[@]}" -gt 0 ]; then
+        IFS='|' read -r c1 c2 c3 <<< "$(t packs_cols)"
+        sel=$(z --list --checklist --height=380 --width=620 --text="$(t packs_ask)" --column="" --column="ID" --column="$c1" --column="$c2" --column="$c3" \
+            --hide-column=2 --print-column=2 --separator=" " "${rows[@]}") || sel=""
+        if [ -n "$sel" ]; then
+            go=yes
+            if [ "$LIVE" = yes ]; then z --question --text="$(t packs_live)" --ok-label="$(t yes)" --cancel-label="$(t notnow)" || go=no; fi
+            if [ "$go" = yes ]; then
+                LOGF=$(mktemp); RCF=$(mktemp)
+                # shellcheck disable=SC2086
+                ( "$BIN/uhuru-pakiti" install $sel >"$LOGF" 2>&1; echo $? >"$RCF" ) | "$ZEN" --title="$(t title)" --width=460 --progress --pulsate --auto-close --no-cancel --text="$(t packs_busy)"
+                rc=$(cat "$RCF" 2>/dev/null); rc=${rc:-1}
+                case "$rc" in
+                    0) z --info --no-markup --text="$(t packs_ok)" || true ;;
+                    3) z --info --no-markup --text="$(t packs_nonet)" || true ;;
+                    126|127) z --warning --no-markup --text="$(t packs_cancel)" || true ;;
+                    *) z --warning --no-markup --text="$(t packs_fail)" || true ;;
+                esac
+                rm -f "$LOGF" "$RCF"
+            fi
+        fi
+    fi
+fi
+
+# ---- 6) faragha na usalama
+if exe uhuru-protect; then
+    line=$("$BIN/uhuru-protect" --check 2>/dev/null | tail -n 1)
+    kv() { printf '%s' "$line" | tr ',' '\n' | sed -n "s/^$1=//p" | head -n 1; }
+    txt=$(t sec_text)
+    case "$line" in PROTECT-OK*|PROTECT-*) txt="$txt\n\n$(printf "$(t sec_stat)" "$(kv n)" "$(kv ok)" "$(kv warn)" "$(kv bad)")" ;; esac
+    if z --question --text="$txt" --ok-label="$(t sec_open)" --cancel-label="$(t next)"; then "$BIN/uhuru-protect" >/dev/null 2>&1 & fi
+fi
+
+# ---- 7) ziara fupi
+while :; do
+    pick=$(z --list --radiolist --height=330 --text="$(t tour_text)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 \
+        TRUE done "$(t finish)" FALSE store "$(t tour_store)" FALSE share "$(t tour_share)") || break
+    case "$pick" in
+        store) exe uhuru-store && { "$BIN/uhuru-store" >/dev/null 2>&1 & } ;;
+        share) exe uhuru-share && { "$BIN/uhuru-share" --gui >/dev/null 2>&1 & } ;;
+        *) break ;;
+    esac
+done
+
+# ---- mwisho
+mkdir -p "$(dirname "$DONE")" 2>/dev/null && : > "$DONE"
+z --info --text="$(t end_text)" --ok-label="$(t finish)" || true
+exit 0

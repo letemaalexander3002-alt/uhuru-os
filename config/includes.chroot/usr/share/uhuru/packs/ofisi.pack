@@ -1,0 +1,11 @@
+# Uhuru OS v19.2: pakiti ya programu. Mistari ya 'jina_*' na 'maelezo_*' ni ya menyu; 'vifurushi' ni majina ya vifurushi vya Debian 12 (bookworm).
+# Vifurushi vilivyomo tayari kwenye ISO (LibreOffice, Firefox, VLC) havirudiwi hapa: pakiti hizi ni NYONGEZA zinazosakinishwa ukiwa na mtandao.
+# Tafsiri za en/fr ziliandikwa na msaidizi wa AI: zikaguliwe na mzungumzaji wa asili.
+id=ofisi
+jina_sw=Ofisi
+jina_en=Office
+jina_fr=Bureautique
+maelezo_sw=Barua pepe, hati za PDF, maandishi kwa kalamu, hesabu za biashara, skana na kuhifadhi nywila
+maelezo_en=Email, PDF tools, handwritten notes, business accounting, scanning and a password manager
+maelezo_fr=Courriel, outils PDF, notes manuscrites, comptabilité, numérisation et gestionnaire de mots de passe
+vifurushi=thunderbird pdfarranger xournalpp gnucash simple-scan keepassxc

@@ -1,0 +1,84 @@
+#!/bin/bash
+# Uhuru OS v19.2: pakiti za programu (Ofisi, Shule, Wasanidi): sakinisha kundi la programu kwa hatua moja.
+#   uhuru-pakiti list                 orodha: id<TAB>jina<TAB>maelezo<TAB>zilizosakinishwa/jumla
+#   uhuru-pakiti status ID            zilizosakinishwa/jumla kwa pakiti moja
+#   uhuru-pakiti install ID [ID..]    sakinisha (inaomba ruhusa ya msimamizi kupitia pkexec; inahitaji mtandao)
+#   uhuru-pakiti --check              kagua faili za pakiti (kwa CI): PAKITI-OK,packs=N,pkgs=M
+# Msimbo wa kutoka (install): 0 sawa | 2 pakiti haijulikani | 3 hakuna mtandao | 4 hakuna kifurushi kinachopatikana | 5 apt imeshindwa | 6 pkexec haipo
+# Vifurushi visivyopatikana kwenye hazina vinarukwa na kuripotiwa (havizuii vingine). Mazingira ya majaribio: UHURU_PAKITI_DIR, UHURU_APT_GET,
+# UHURU_APT_CACHE, UHURU_DPKG_QUERY, UHURU_PKEXEC, UHURU_PAKITI_NET (amri ya kuangalia mtandao).
+set -u
+DIR=${UHURU_PAKITI_DIR:-/usr/share/uhuru/packs}
+APT_GET=${UHURU_APT_GET:-apt-get}
+APT_CACHE=${UHURU_APT_CACHE:-apt-cache}
+DPKGQ=${UHURU_DPKG_QUERY:-dpkg-query}
+PKEXEC=${UHURU_PKEXEC:-pkexec}
+SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+
+lang_code() { case "${LANGUAGE:-${LANG:-}}" in fr*) echo fr ;; en*) echo en ;; *) echo sw ;; esac; }
+field() { sed -n "s/^$2=//p" "$DIR/$1.pack" 2>/dev/null | head -n 1; }
+pack_ids() { local f; for f in "$DIR"/*.pack; do [ -f "$f" ] && basename "$f" .pack; done; }
+valid_id() { printf '%s' "$1" | grep -Eq '^[a-z][a-z0-9-]{1,20}$' && [ -f "$DIR/$1.pack" ]; }
+loc() { local v; v=$(field "$1" "$2_$(lang_code)"); [ -n "$v" ] || v=$(field "$1" "$2_sw"); printf '%s' "$v"; }
+pkgs_of() { local p; for p in $(field "$1" vifurushi); do printf '%s' "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' && printf '%s\n' "$p"; done; }
+is_installed() { "$DPKGQ" -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null | grep -q '^ii'; }
+counts() { local n=0 t=0 p; for p in $(pkgs_of "$1"); do t=$((t+1)); is_installed "$p" && n=$((n+1)); done; printf '%s/%s' "$n" "$t"; }
+net_ok() {
+    if [ -n "${UHURU_PAKITI_NET:-}" ]; then $UHURU_PAKITI_NET >/dev/null 2>&1; return $?; fi
+    timeout 6 getent hosts deb.debian.org >/dev/null 2>&1
+}
+candidate() { "$APT_CACHE" policy "$1" 2>/dev/null | sed -n 's/^ *Candidate: *//p' | head -n 1; }
+
+cmd_list() { local id; for id in $(pack_ids); do printf '%s\t%s\t%s\t%s\n' "$id" "$(loc "$id" jina)" "$(loc "$id" maelezo)" "$(counts "$id")"; done; }
+
+cmd_check() {
+    local id n=0 total=0 k p bad=""
+    for id in $(pack_ids); do
+        n=$((n+1))
+        valid_id "$id" || bad="$bad $id:id"
+        [ "$(field "$id" id)" = "$id" ] || bad="$bad $id:id-si-jina-la-faili"
+        for k in jina_sw jina_en jina_fr maelezo_sw maelezo_en maelezo_fr vifurushi; do [ -n "$(field "$id" "$k")" ] || bad="$bad $id:$k"; done
+        for p in $(field "$id" vifurushi); do
+            printf '%s' "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || bad="$bad $id:kifurushi-batili"
+            total=$((total+1))
+        done
+    done
+    [ "$n" -ge 1 ] || bad="$bad hakuna-pakiti"
+    if [ -n "$bad" ]; then echo "PAKITI-FAIL$(printf '%s' "$bad" | tr ' ' ',')"; return 1; fi
+    echo "PAKITI-OK,packs=$n,pkgs=$total"
+}
+
+cmd_install() {
+    [ $# -ge 1 ] || { echo "uhuru-pakiti: taja pakiti (mfano: uhuru-pakiti install ofisi)" >&2; return 2; }
+    local id
+    for id in "$@"; do valid_id "$id" || { echo "UHURU-PAKITI bad-id=$id"; return 2; }; done
+    if [ "$(id -u)" != 0 ]; then
+        command -v "$PKEXEC" >/dev/null 2>&1 || { echo "UHURU-PAKITI pkexec=haipo"; return 6; }
+        exec "$PKEXEC" "$SELF" install "$@"
+    fi
+    export DEBIAN_FRONTEND=noninteractive LC_ALL=C
+    net_ok || { echo "UHURU-PAKITI net=no"; return 3; }
+    "$APT_GET" update -qq >/dev/null 2>&1 || echo "UHURU-PAKITI onyo=apt-update-imeshindwa"
+    local want="" p todo="" missing="" have=0 c
+    for id in "$@"; do want="$want $(pkgs_of "$id" | tr '\n' ' ')"; done
+    for p in $(printf '%s\n' $want | sort -u); do
+        if is_installed "$p"; then have=$((have+1)); continue; fi
+        c=$(candidate "$p")
+        if [ -z "$c" ] || [ "$c" = "(none)" ]; then missing="$missing${missing:+,}$p"; else todo="$todo $p"; fi
+    done
+    if [ -z "$todo" ]; then
+        if [ "$have" -gt 0 ]; then echo "UHURU-PAKITI ok installed=0 already=$have missing=${missing:-none}"; return 0; fi
+        echo "UHURU-PAKITI nothing missing=${missing:-none}"; return 4
+    fi
+    # shellcheck disable=SC2086
+    "$APT_GET" install -y --no-install-recommends -- $todo || { echo "UHURU-PAKITI apt=imeshindwa"; return 5; }
+    echo "UHURU-PAKITI ok installed=$(printf '%s\n' $todo | wc -l | tr -d ' ') already=$have missing=${missing:-none}"
+}
+
+case "${1:-}" in
+    list) cmd_list ;;
+    status) shift; valid_id "${1:-}" || { echo "uhuru-pakiti: pakiti haijulikani" >&2; exit 2; }; counts "$1"; echo ;;
+    install) shift; cmd_install "$@" ;;
+    --check) cmd_check ;;
+    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; [ -z "${1:-}" ] && exit 0 || exit 2 ;;
+esac

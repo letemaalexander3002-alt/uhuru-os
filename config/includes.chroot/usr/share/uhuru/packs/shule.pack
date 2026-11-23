@@ -1,0 +1,9 @@
+# Uhuru OS v19.2: pakiti ya programu (angalia ofisi.pack kwa maelezo ya muundo).
+id=shule
+jina_sw=Shule
+jina_en=School
+jina_fr=École
+maelezo_sw=Michezo ya kujifunza, kuandika kwa kasi, hisabati kwa watoto na anga la usiku
+maelezo_en=Learning games, typing tutor, maths for kids and a night-sky planetarium
+maelezo_fr=Jeux éducatifs, apprentissage de la dactylographie, maths pour enfants et planétarium
+vifurushi=gcompris-qt klavaro tuxmath tuxtype stellarium
