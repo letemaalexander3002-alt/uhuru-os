@@ -5,6 +5,7 @@ set -u
 REPO=${REPO:-$(cd "$(dirname "$0")/.." && pwd)}
 B="$REPO/config/includes.chroot"
 KARIBU="$B/usr/local/bin/uhuru-karibu"
+VERD="$REPO/scripts/e2e-verdict.sh"
 PAKITI="$B/usr/local/bin/uhuru-pakiti"
 PACKS="$B/usr/share/uhuru/packs"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
@@ -103,6 +104,7 @@ mkdir -p "$T/kb" "$T/wp"; for w in kilimanjaro zanzibar tanzanite kitenge tingat
 cat > "$T/bin/zenity" <<'S'
 #!/bin/bash
 echo "$*" >> "$ZLOG"
+[ -n "${UHURU_KARIBU_STEP:-}" ] && { cat "$UHURU_KARIBU_STEP" 2>/dev/null; echo; } >> "${STEPLOG:-/dev/null}"
 case "$*" in *--progress*) cat >/dev/null; exit 0 ;; esac
 line=$(head -n 1 "$ZANS" 2>/dev/null); [ -n "$line" ] || exit 1
 sed -i 1d "$ZANS"; rc=${line%%|*}; out=${line#*|}
@@ -125,7 +127,7 @@ exit 0
 S
 chmod +x "$T/kb"/*
 for c in pkill pgrep setsid nm-connection-editor xq; do printf '#!/bin/bash\necho "%s $*" >> "$CALLS"\n[ "%s" = xq ] && [ "$2" = xfce4-desktop ] && [ "$3" = -l ] && echo /backdrop/screen0/monitor0/workspace0/last-image\n[ "%s" = pgrep ] && exit 1\nexit 0\n' "$c" "$c" "$c" > "$T/bin/$c"; chmod +x "$T/bin/$c"; done
-export ZLOG="$T/zlog" ZANS="$T/zans"
+export ZLOG="$T/zlog" ZANS="$T/zans" STEPLOG="$T/steplog"
 kenv() { env PATH="$T/bin:$PATH" HOME="$T/home" DISPLAY=:0 UHURU_ZENITY="$T/bin/zenity" UHURU_KARIBU_BIN="$T/kb" UHURU_XFCONF="$T/bin/xq" \
     UHURU_KARIBU_DONE="$T/home/.config/uhuru/karibu.done" UHURU_KARIBU_CI="$T/ci1 $T/ci2" UHURU_KARIBU_LIVE=no UHURU_WALLPAPER_DIR="$T/wp" "$@"; }
 reset() { rm -rf "$T/home"; mkdir -p "$T/home"; : > "$CALLS"; : > "$ZLOG"; printf '%s\n' "$@" > "$ZANS"; }
@@ -205,6 +207,73 @@ eq "H: --check inapita kwa zana zote" "$rc" 0
 case "$out" in KARIBU-OK,zenity=yes,wallpapers=5,pakiti=PAKITI-OK*) check "H: --check: $out" 0 ;; *) check "H: --check: $out" 1 ;; esac
 rm -f "$T/wp/tingatinga.png"; kenv "$KARIBU" --check >/dev/null 2>&1; eq "H: wallpaper ikikosekana --check inashindwa" "$?" 1
 
+
+echo "5) uhuru-karibu --demo: onyesho bila madhara (kwa picha za CI)"
+STEPFILE="$T/stepfile"
+demo_reset() { reset "$@"; : > "$STEPLOG"; : > "$STEPFILE"; }
+dside() {  # hakuna kitu kimebadilishwa
+    hasnt "$1: lugha haibadilishwi" "$CALLS" "uhuru-lugha --set"
+    hasnt "$1: mwonekano haubadilishwi" "$CALLS" "uhuru-mwonekano --"
+    hasnt "$1: wallpaper haibadilishwi (xfconf)" "$CALLS" "last-image"
+    hasnt "$1: mzunguko wa wallpapers haujaguswa" "$CALLS" "pkill"
+    hasnt "$1: hakuna kinachosakinishwa" "$CALLS" "uhuru-pakiti install"
+    ! grep -qx "uhuru-protect " "$CALLS"; check "$1: Kituo cha Ulinzi hakifunguliwi (ripoti ya --check tu)" $?
+    hasnt "$1: Duka halifunguliwi" "$CALLS" "uhuru-store"
+    hasnt "$1: Share haifunguliwi" "$CALLS" "uhuru-share"
+    hasnt "$1: mtandao haufunguliwi" "$CALLS" "nm-connection-editor"
+    [ ! -e "$DONEF" ] && [ ! -e "$T/home/.config/uhuru/no-wallpaper-rotate" ]; check "$1: hakuna faili la kukamilika wala la mzunguko" $?
+}
+# D1) madirisha yote yakiisha muda (rc 5): hatua 8 kwa mpangilio, kila dirisha lina --timeout
+demo_reset "5|" "5|" "5|" "5|" "5|" "5|" "5|" "5|"
+kenv UHURU_KARIBU_STEP="$STEPFILE" UHURU_KARIBU_DEMO_SECS=15 "$KARIBU" --demo; eq "demo: msimbo 0" "$?" 0
+exp=$'karibu-1-karibu\nkaribu-2-lugha\nkaribu-3-mwonekano\nkaribu-4-wallpaper\nkaribu-5-pakiti\nkaribu-6-usalama\nkaribu-7-ziara\nkaribu-8-mwisho'
+got=$(grep . "$STEPLOG"); eq "demo: hatua 8 zinaonekana kwa mpangilio (step=)" "$got" "$exp"
+eq "demo: kila dirisha lina --timeout=15 (linajifunga lenyewe)" "$(grep -c -- '--timeout=15' "$ZLOG")" 8
+[ ! -s "$ZANS" ]; check "demo: madirisha yote 8 yametokea" $?
+eq "demo: step inarudi 'none' mwishoni" "$(cat "$STEPFILE")" none
+dside "demo (muda umeisha)"
+# D2) hata mtumiaji akibonyeza kila kitu, hakuna kinachobadilika
+demo_reset "0|" "0|English" "0|dark" "0|zanzibar" "0|shule wasanidi" "0|" "0|store" "0|share" "0|done" "0|"
+kenv UHURU_KARIBU_STEP="$STEPFILE" "$KARIBU" --demo; eq "demo (majibu yote ndiyo): msimbo 0" "$?" 0
+dside "demo (majibu yote ndiyo)"
+# D3) demo haizuiliwi na walinzi (live, CI, imekamilika): inaonyeshwa
+demo_reset "5|" "5|" "5|" "5|" "5|" "5|" "5|" "5|"; mkdir -p "$T/home/.config/uhuru"; : > "$DONEF"; : > "$T/ci1"
+kenv UHURU_KARIBU_LIVEUSER="$(/usr/bin/id -un)" UHURU_KARIBU_STEP="$STEPFILE" "$KARIBU" --demo
+eq "demo kwenye CI/akaunti ya live/imekamilika: madirisha 8 yanaonekana" "$(grep -c -- "--timeout=" "$ZLOG")" 8; rm -f "$T/ci1"
+# D4) hali ya kawaida HAIANDIKI faili la hatua (wizard ya CI haiguswi)
+reset "1|"; : > "$STEPFILE"; kenv UHURU_KARIBU_STEP="$STEPFILE" "$KARIBU"; [ ! -s "$STEPFILE" ]; check "hali ya kawaida haiandiki faili la hatua" $?
+reset "0|" "1|" "1|" "1|" "1|" "1|" "1|" "1|"; : > "$STEPFILE"; kenv UHURU_KARIBU_STEP="$STEPFILE" "$KARIBU" --again; [ ! -s "$STEPFILE" ]; check "--again haiandiki faili la hatua" $?
+# D5) faili la hatua halipo (kompyuta halisi): demo bado inafanya kazi
+demo_reset "5|" "5|" "5|" "5|" "5|" "5|" "5|" "5|"
+kenv UHURU_KARIBU_STEP="$T/haipo/step" "$KARIBU" --demo; eq "demo bila faili la hatua: msimbo 0" "$?" 0
+
+echo "6) harness ya picha (boot-screens.sh: karibu_screens)"
+BS="$REPO/scripts/boot-screens.sh"
+hsrc() {   # hsrc WAIT_MODE: inapakia harness na kubadilisha mon/key/shot/wait_state kuwa bandia
+    UHURU_SOURCE_ONLY=1 . "$BS" "" "$T/hout" 2>/dev/null
+    HL="$T/hlog"; : > "$HL"
+    sleep() { :; }; key() { echo "key $*" >> "$HL"; }; typestr() { echo "typestr $*" >> "$HL"; }
+    note() { echo "note $*" >> "$HL"; }; shot() { echo "shot $1" >> "$HL"; }
+    wait_state() { echo "wait $1" >> "$HL"; case "${WAIT_MODE:-ok}" in ok) return 0 ;; miss3) case "$1" in *3-mwonekano*) return 1 ;; esac; return 0 ;; stale2) case "$1" in *2-lugha*) return 2 ;; esac; return 0 ;; esac; }
+}
+( hsrc; WAIT_MODE=ok; karibu_screens; echo "rc=$?" >> "$HL"
+  grep -q '^key alt-f4$' "$HL" && grep -q '^typestr uhuru-karibu --demo$' "$HL" && [ "$(grep -c '^shot ' "$HL")" = 8 ] && grep -q '^shot 25-karibu-karibu$' "$HL" && grep -q '^shot 32-karibu-mwisho$' "$HL" \
+    && grep -q '^note E2E karibu-steps=8$' "$HL" && grep -q '^rc=0$' "$HL"; echo $? > "$T/h1" ); eq "harness: hatua 8 zinapigwa picha 25..32 na kuandikwa kwenye e2e.log" "$(cat "$T/h1")" 0
+( hsrc; WAIT_MODE=miss3; karibu_screens; echo "rc=$?" >> "$HL"
+  [ "$(grep -c '^shot ' "$HL")" = 2 ] && grep -q '^note E2E karibu-missing=3-mwonekano$' "$HL" && grep -q '^note E2E karibu-steps=2$' "$HL" && grep -q '^rc=0$' "$HL"; echo $? > "$T/h2" ); eq "harness: dirisha likikosekana inasimama, inaripoti lililokosekana" "$(cat "$T/h2")" 0
+( hsrc; WAIT_MODE=stale2; karibu_screens; echo "rc=$?" >> "$HL"; grep -q '^rc=2$' "$HL"; echo $? > "$T/h3" ); eq "harness: telemetry ikisimama inarudisha 2 (e2e inasema 'stale')" "$(cat "$T/h3")" 0
+grep -q 'karibu_screens; rc=\$?; \[ \$rc -eq 2 \] && return 2' "$BS"; check "harness: karibu_screens inaitwa baada ya picha 24, ndani ya tester-login" $?
+awk '/shot 24-kituo-cha-ulinzi/{a=NR} /karibu_screens; rc/{b=NR} /^        sleep 100$/{c=NR} END{exit (a&&b&&c&&a<b&&b<c)?0:1}' "$BS"; check "harness: mpangilio ni 24 -> Karibu -> sleep 100 (diag ya mwisho haiguswi)" $?
+
+echo "7) e2e-verdict: ukaguzi wa Karibu"
+mkdir -p "$T/v"; printf 'QEMU accel: kvm\nE2E telemetry=ok\nE2E tester-login=yes\nE2E karibu-start=yes\n' > "$T/v/e2e.log"
+for k in 1-karibu 2-lugha 3-mwonekano 4-wallpaper 5-pakiti 6-usalama 7-ziara 8-mwisho; do echo "E2E karibu-shot=$k" >> "$T/v/e2e.log"; done
+echo 'UHURU-STATE n=1 x=y' > "$T/v/serial.log"
+bash "$VERD" "$T/v" 2>&1 | grep -q 'CHECK PASS: e2e: Karibu Uhuru inaonekana kwenye desktop halisi'; check "verdict: hatua 8 = PASS" $?
+printf 'QEMU accel: kvm\nE2E telemetry=ok\nE2E tester-login=yes\nE2E karibu-start=yes\nE2E karibu-shot=1-karibu\nE2E karibu-missing=2-lugha\n' > "$T/v/e2e.log"
+bash "$VERD" "$T/v" 2>&1 | grep -q 'CHECK FAIL: e2e: Karibu Uhuru: madirisha 1 tu kati ya 8 yameonekana (karibu-missing=2-lugha)'; check "verdict: hatua pungufu = FAIL yenye sababu" $?
+printf 'QEMU accel: kvm\nE2E telemetry=ok\nE2E tester-login=yes\n' > "$T/v/e2e.log"
+bash "$VERD" "$T/v" 2>&1 | grep -q 'Karibu Uhuru'; [ $? -ne 0 ]; check "verdict: bila 'karibu-start' (login ya tester haikutokea) hakuna ukaguzi wa Karibu" $?
 echo
 echo "=== JUMLA: $ok OK, $fail FAIL ==="
 [ "$fail" = 0 ]

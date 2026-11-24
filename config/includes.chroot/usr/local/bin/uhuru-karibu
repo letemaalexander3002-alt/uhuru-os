@@ -3,9 +3,10 @@
 #   uhuru-karibu           anza yenyewe ukiingia mara ya kwanza (inarukwa kwa akaunti ya live 'mtumiaji', kwenye CI, na ikishakamilika)
 #   uhuru-karibu --again   fungua tena kutoka menyu (hairuki ikishakamilika)
 #   uhuru-karibu --check   ripoti ya zana zinazohitajika (kwa CI / VM): KARIBU-OK,...
+#   uhuru-karibu --demo    onyesho: madirisha yote kwa mpangilio, kila moja linajifunga lenyewe; HAKUNA kinachobadilishwa (picha za CI na kuhakiki kwenye VM)
 # Kila hatua inaweza kurukwa (Funga/Cancel). "Baadaye" kwenye dirisha la kwanza halihifadhi kukamilika: itaonekana tena ukiingia.
 # Mazingira ya majaribio: UHURU_ZENITY, UHURU_KARIBU_BIN, UHURU_XFCONF, UHURU_KARIBU_DONE, UHURU_KARIBU_LIVE, UHURU_KARIBU_LIVEUSER,
-# UHURU_KARIBU_CI (faili za alama za CI, zikiwa na nafasi), UHURU_WALLPAPER_DIR, UHURU_KARIBU_NONET.
+# UHURU_KARIBU_CI (faili za alama za CI, zikiwa na nafasi), UHURU_WALLPAPER_DIR, UHURU_KARIBU_NONET, UHURU_KARIBU_STEP, UHURU_KARIBU_DEMO_SECS.
 set -u
 ZEN=${UHURU_ZENITY:-zenity}
 BIN=${UHURU_KARIBU_BIN:-/usr/local/bin}
@@ -16,6 +17,9 @@ ROTOFF="$HOME/.config/uhuru/no-wallpaper-rotate"
 LIVEUSER=${UHURU_KARIBU_LIVEUSER:-mtumiaji}
 CIFILES=${UHURU_KARIBU_CI:-/run/uhuru-ci /run/uhuru-setup.step}
 MODE=${1:-auto}
+DEMO=0; [ "$MODE" = --demo ] && DEMO=1
+STEPF=${UHURU_KARIBU_STEP:-/run/uhuru-setup.step}   # faili la hatua la CI (lipo kwenye CI tu): telemetry inalionyesha kama step= ili harness ipige picha ya kila dirisha
+DEMO_SECS=${UHURU_KARIBU_DEMO_SECS:-15}
 
 lang_now() {
     local c=""
@@ -73,7 +77,12 @@ t() {   # t KEY: ujumbe (sec_stat ina %%s mbili-mbili ili printf ya baadaye ijaz
 say_err() { printf 'uhuru-karibu: %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 exe() { [ -x "$BIN/$1" ]; }
-z() { "$ZEN" --title="$(t title)" --width=460 "$@"; }
+step() { [ "$DEMO" = 1 ] && [ -w "$STEPF" ] && printf '%s' "$1" > "$STEPF"; return 0; }   # hatua huandikwa kwenye demo pekee
+z() {
+    local tm=()
+    [ "$DEMO" = 1 ] && tm=("--timeout=$DEMO_SECS")
+    "$ZEN" --title="$(t title)" --width=460 ${tm[@]+"${tm[@]}"} "$@"
+}
 
 # ---- hatua: ukaguzi
 if [ "$MODE" = "--check" ]; then
@@ -87,7 +96,7 @@ if [ "$MODE" = "--check" ]; then
     echo "$r,zenity=$zz,wallpapers=$wp,pakiti=$pk"
     [ "$r" = KARIBU-OK ]; exit $?
 fi
-case "$MODE" in auto|--again) ;; *) say_err "hoja haijulikani: $MODE (tumia --again au --check)"; exit 2 ;; esac
+case "$MODE" in auto|--again|--demo) ;; *) say_err "hoja haijulikani: $MODE (tumia --again au --check)"; exit 2 ;; esac
 
 # ---- walinzi
 have "$ZEN" || exit 0
@@ -117,29 +126,35 @@ apply_wallpaper() {   # apply_wallpaper FILE
     return 0
 }
 
+[ "$DEMO" = 1 ] && trap 'step none' EXIT
+
 # ---- 1) karibu
-z --question --text="$(t welcome)" --ok-label="$(t start)" --cancel-label="$(t later)" || exit 0
+step karibu-1-karibu
+z --question --text="$(t welcome)" --ok-label="$(t start)" --cancel-label="$(t later)" || { [ "$DEMO" = 1 ] || exit 0; }
 
 # ---- 2) lugha
 if exe uhuru-lugha; then
+    step karibu-2-lugha
     pick=$(z --list --radiolist --height=300 --text="$(t lang_ask)" --column="" --column="" --print-column=2 --hide-header \
         TRUE Kiswahili FALSE English FALSE "Français") && {
         case "$pick" in English) code=en ;; "Français") code=fr ;; *) code=sw ;; esac
-        if "$BIN/uhuru-lugha" --set "$code" >/dev/null 2>&1; then L=$code; z --info --no-markup --text="$(t lang_note)" || true; fi
+        if [ "$DEMO" = 1 ]; then :; elif "$BIN/uhuru-lugha" --set "$code" >/dev/null 2>&1; then L=$code; z --info --no-markup --text="$(t lang_note)" || true; fi
     }
 fi
 
 # ---- 3) mwonekano na wallpaper
 if exe uhuru-mwonekano; then
+    step karibu-3-mwonekano
     mode=$(z --list --radiolist --height=260 --text="$(t mode_ask)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 \
-        TRUE light "$(t light)" FALSE dark "$(t dark)") && case "$mode" in light|dark) "$BIN/uhuru-mwonekano" "--$mode" >/dev/null 2>&1 || true ;; esac
+        TRUE light "$(t light)" FALSE dark "$(t dark)") && case "$mode" in light|dark) [ "$DEMO" = 1 ] || "$BIN/uhuru-mwonekano" "--$mode" >/dev/null 2>&1 || true ;; esac
 fi
 if [ -d "$WPDIR" ]; then
+    step karibu-4-wallpaper
     args=(TRUE rotate "$(t wall_rot)")
     for w in kilimanjaro:Kilimanjaro zanzibar:Zanzibar tanzanite:Tanzanite kitenge:Kitenge tingatinga:Tingatinga; do
         [ -f "$WPDIR/${w%%:*}.png" ] && args+=(FALSE "${w%%:*}" "${w##*:}")
     done
-    wp=$(z --list --radiolist --height=360 --text="$(t wall_ask)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 "${args[@]}") && {
+    wp=$(z --list --radiolist --height=360 --text="$(t wall_ask)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 "${args[@]}") && [ "$DEMO" = 0 ] && {
         mkdir -p "$(dirname "$ROTOFF")" 2>/dev/null
         case "$wp" in
             rotate) rm -f "$ROTOFF"; if exe uhuru-wallpaper; then pgrep -u "$(id -u)" -f '/usr/local/bin/uhuru-wallpaper' >/dev/null 2>&1 || { setsid -f "$BIN/uhuru-wallpaper" >/dev/null 2>&1 || true; }; fi ;;
@@ -150,7 +165,7 @@ if [ -d "$WPDIR" ]; then
 fi
 
 # ---- 4) mtandao (hiari)
-if [ -z "${UHURU_KARIBU_NONET:-}" ] && have nm-connection-editor; then
+if [ -z "${UHURU_KARIBU_NONET:-}" ] && [ "$DEMO" = 0 ] && have nm-connection-editor; then
     if z --question --text="$(t net_ask)" --ok-label="$(t yes)" --cancel-label="$(t notnow)"; then nm-connection-editor || true; fi
 fi
 
@@ -161,10 +176,11 @@ if exe uhuru-pakiti; then
         [ -n "$id" ] && rows+=(FALSE "$id" "$name" "$desc" "$cnt")
     done < <("$BIN/uhuru-pakiti" list 2>/dev/null)
     if [ "${#rows[@]}" -gt 0 ]; then
+        step karibu-5-pakiti
         IFS='|' read -r c1 c2 c3 <<< "$(t packs_cols)"
         sel=$(z --list --checklist --height=380 --width=620 --text="$(t packs_ask)" --column="" --column="ID" --column="$c1" --column="$c2" --column="$c3" \
             --hide-column=2 --print-column=2 --separator=" " "${rows[@]}") || sel=""
-        if [ -n "$sel" ]; then
+        if [ -n "$sel" ] && [ "$DEMO" = 0 ]; then
             go=yes
             if [ "$LIVE" = yes ]; then z --question --text="$(t packs_live)" --ok-label="$(t yes)" --cancel-label="$(t notnow)" || go=no; fi
             if [ "$go" = yes ]; then
@@ -186,25 +202,28 @@ fi
 
 # ---- 6) faragha na usalama
 if exe uhuru-protect; then
+    step karibu-6-usalama
     line=$("$BIN/uhuru-protect" --check 2>/dev/null | tail -n 1)
     kv() { printf '%s' "$line" | tr ',' '\n' | sed -n "s/^$1=//p" | head -n 1; }
     txt=$(t sec_text)
     case "$line" in PROTECT-OK*|PROTECT-*) txt="$txt\n\n$(printf "$(t sec_stat)" "$(kv n)" "$(kv ok)" "$(kv warn)" "$(kv bad)")" ;; esac
-    if z --question --text="$txt" --ok-label="$(t sec_open)" --cancel-label="$(t next)"; then "$BIN/uhuru-protect" >/dev/null 2>&1 & fi
+    if z --question --text="$txt" --ok-label="$(t sec_open)" --cancel-label="$(t next)" && [ "$DEMO" = 0 ]; then "$BIN/uhuru-protect" >/dev/null 2>&1 & fi
 fi
 
 # ---- 7) ziara fupi
 while :; do
+    step karibu-7-ziara
     pick=$(z --list --radiolist --height=330 --text="$(t tour_text)" --column="" --column="" --column="" --print-column=2 --hide-header --hide-column=2 \
         TRUE done "$(t finish)" FALSE store "$(t tour_store)" FALSE share "$(t tour_share)") || break
     case "$pick" in
-        store) exe uhuru-store && { "$BIN/uhuru-store" >/dev/null 2>&1 & } ;;
-        share) exe uhuru-share && { "$BIN/uhuru-share" --gui >/dev/null 2>&1 & } ;;
+        store) [ "$DEMO" = 0 ] && exe uhuru-store && { "$BIN/uhuru-store" >/dev/null 2>&1 & } ;;
+        share) [ "$DEMO" = 0 ] && exe uhuru-share && { "$BIN/uhuru-share" --gui >/dev/null 2>&1 & } ;;
         *) break ;;
     esac
 done
 
 # ---- mwisho
-mkdir -p "$(dirname "$DONE")" 2>/dev/null && : > "$DONE"
+[ "$DEMO" = 1 ] || { mkdir -p "$(dirname "$DONE")" 2>/dev/null && : > "$DONE"; }
+step karibu-8-mwisho
 z --info --text="$(t end_text)" --ok-label="$(t finish)" || true
 exit 0

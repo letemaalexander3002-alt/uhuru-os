@@ -163,6 +163,15 @@ else
     if p9 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 9: dirisha la Kituo cha Ulinzi linajengwa ndani ya session"; else fail "awamu ya 9: Kituo cha Ulinzi hakifunguki ndani ya session ($(printf '%s\n' "$P9" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     echo "CHECK INFO: e2e: awamu ya 9: $(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | tail -n 1)"
 fi
+# ---- Karibu Uhuru (v19.2.1): madirisha yote 8 yameonekana kwenye desktop halisi na kupigwa picha (25..32) ----
+if has 'E2E karibu-start=yes'; then
+    KS=$(grep -c '^E2E karibu-shot=' "$E" 2>/dev/null)
+    if [ "${KS:-0}" -ge 8 ]; then
+        echo "CHECK PASS: e2e: Karibu Uhuru inaonekana kwenye desktop halisi: madirisha yote 8 yameonekana kwa mpangilio na kupigwa picha (25..32)"
+    else
+        fail "Karibu Uhuru: madirisha ${KS:-0} tu kati ya 8 yameonekana ($(grep -o 'karibu-missing=[^ ]*' "$E" | head -n 1)); angalia picha 25..32 na endesha 'uhuru-karibu --demo' kwenye VM"
+    fi
+fi
 if [ "$FAILS" -eq 0 ]; then echo "CHECK PASS: e2e: HATUA ZOTE (boot -> autologin -> wizard -> usajili -> login mpya) ZIMEPITA"; fi
 details
 exit 0

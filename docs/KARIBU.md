@@ -34,3 +34,15 @@ Msimbo wa `uhuru-pakiti install`: 0 sawa, 2 pakiti haijulikani, 3 hakuna mtandao
 ## Marekebisho ya telemetry (kutoka v19.1)
 Mstari wa `UHURU-P7` ulibandikana ndani ya mstari wa `UHURU-DIAG` kwenye serial (waandishi wawili wa nyuma kwa wakati mmoja, n=2), na hukumu ikaupoteza.
 `emit()` sasa inatumia `flock` (kila ujumbe unaandikwa mzima), na `e2e-verdict.sh` inatenganisha mistari iliyobandikana. Jaribio: `scripts/telemetry-selftest.sh`.
+
+## Onyesho `--demo` na picha za CI (v19.2.1)
+`uhuru-karibu --demo` inaonyesha madirisha yote 8 kwa mpangilio; kila moja linajifunga lenyewe baada ya sekunde 15 (`UHURU_KARIBU_DEMO_SECS`) na **hakuna kinachobadilishwa**
+(si lugha, si mwonekano, si wallpaper, hakuna kinachosakinishwa, wala Duka/Kituo cha Ulinzi hakifunguliwi, wala faili la kukamilika halindikwi). Inaonyeshwa hata kwa akaunti ya live na kwenye CI.
+
+CI (`scripts/boot-screens.sh`, kazi `karibu_screens`) inaiendesha baada ya picha 24 ndani ya session ya `tester`. Usawazishaji ni `step=karibu-N-jina` ya telemetry
+(faili la hatua la CI, kama wizard), si muda wala funguo, kwa hiyo picha inapigwa dirisha linapoonekana: `25-karibu-karibu` ... `32-karibu-mwisho` (karibu, lugha, mwonekano,
+wallpaper, pakiti, usalama, ziara, mwisho). `e2e-verdict.sh` inaongeza ukaguzi mmoja (madirisha 8), na `scripts/v1921-postcheck.sh` inahakikisha picha 8 zipo.
+Picha hizi ziko kwenye ripoti ndogo (`screens/`), kwa hiyo unaweza kuziona kabla ya kupakua ISO.
+
+Kikomo: demo inaonyesha mwonekano wa madirisha, si kwamba kubadili lugha/wallpaper/kusakinisha kunafanya kazi kwenye mfumo halisi (hayo yanajaribiwa na `scripts/karibu-selftest.sh` kwa zana bandia).
+Hatua ya mtandao (Wi-Fi) haionyeshwi kwenye demo.

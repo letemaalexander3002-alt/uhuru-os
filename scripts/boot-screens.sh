@@ -102,6 +102,26 @@ wiz() {
     shot "wizard-$cur-IMEKWAMA"; return 1
 }
 
+# v19.2.1: Karibu Uhuru kwa hali ya --demo (haibadilishi chochote; kila dirisha linajifunga lenyewe baada ya sekunde 15).
+# Usawazishaji ni step= ya telemetry (kama wizard), kwa hiyo picha ya kila hatua inapigwa dirisha linapoonekana: hakuna kutuma funguo kwenye dirisha.
+# Inarudisha 0 (zote zimeonekana, au Karibu haikuanza: matokeo yamo kwenye e2e.log), 2 (telemetry imesimama).
+KARIBU_STEPS="1-karibu 2-lugha 3-mwonekano 4-wallpaper 5-pakiti 6-usalama 7-ziara 8-mwisho"
+karibu_screens() {
+    local k n seen=0 rc
+    key alt-f4; sleep 2                          # funga Kituo cha Ulinzi (picha 24) ili terminali mpya ipate focus
+    key ctrl-alt-t; sleep 6
+    note "E2E karibu-start=yes"
+    typestr "uhuru-karibu --demo"; key ret
+    for k in $KARIBU_STEPS; do
+        wait_state " step=karibu-$k " 45; rc=$?
+        [ $rc -eq 2 ] && return 2
+        if [ $rc -ne 0 ]; then note "E2E karibu-missing=$k"; break; fi
+        n=${k%%-*}; sleep 1; shot "$((24 + n))-karibu-${k#*-}"; note "E2E karibu-shot=$k"; seen=$((seen+1))
+    done
+    note "E2E karibu-steps=$seen"
+    return 0
+}
+
 # e2e: inarudisha 0 ikimaliza (matokeo yamo kwenye e2e.log), 2 telemetry ikisimama.
 e2e() {
     local rc
@@ -160,6 +180,7 @@ e2e() {
         key ctrl-alt-t; sleep 6; typestr "uhuru-dev doctor"; key ret; sleep 10; shot 22-dev-doctor
         typestr "uhuru-installer"; key ret; sleep 6; shot 23-installer-preflight; key esc; sleep 2
         typestr "uhuru-protect"; key ret; sleep 8; shot 24-kituo-cha-ulinzi
+        karibu_screens; rc=$?; [ $rc -eq 2 ] && return 2
         sleep 100
     fi
     return 0
