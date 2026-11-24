@@ -1,0 +1,6 @@
+# Uhuru OS v19.2.2: greeter ya LightDM (uid 104) huacha mali ya AT_SPI_BUS kwenye dirisha la mzizi wa X; programu za session ya mtumiaji
+# (zenity, uhuru-share, exo-open...) hujaribu soketi ya greeter na kuonya "Couldn't connect to accessibility bus ... /run/user/104/at-spi/bus_0".
+# Tunaiondoa mwanzoni mwa session. Haifanyi chochote bila xprop au DISPLAY, na haiwezi kuzuia kuingia (makosa yote yanapuuzwa).
+if [ -n "${DISPLAY:-}" ] && command -v xprop >/dev/null 2>&1; then
+    xprop -root -remove AT_SPI_BUS >/dev/null 2>&1 || true
+fi

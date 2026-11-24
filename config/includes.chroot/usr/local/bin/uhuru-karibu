@@ -8,6 +8,7 @@
 # Mazingira ya majaribio: UHURU_ZENITY, UHURU_KARIBU_BIN, UHURU_XFCONF, UHURU_KARIBU_DONE, UHURU_KARIBU_LIVE, UHURU_KARIBU_LIVEUSER,
 # UHURU_KARIBU_CI (faili za alama za CI, zikiwa na nafasi), UHURU_WALLPAPER_DIR, UHURU_KARIBU_NONET, UHURU_KARIBU_STEP, UHURU_KARIBU_DEMO_SECS.
 set -u
+export NO_AT_BRIDGE=1   # zenity haihitaji AT-SPI; huzuia onyo la "Couldn't connect to accessibility bus" kwenye kila dirisha
 ZEN=${UHURU_ZENITY:-zenity}
 BIN=${UHURU_KARIBU_BIN:-/usr/local/bin}
 XQ=${UHURU_XFCONF:-xfconf-query}
@@ -173,12 +174,12 @@ fi
 if exe uhuru-pakiti; then
     rows=()
     while IFS=$'\t' read -r id name desc cnt; do
-        [ -n "$id" ] && rows+=(FALSE "$id" "$name" "$desc" "$cnt")
+        [ -n "$id" ] && rows+=(FALSE "$id" "$name" "$cnt" "$desc")
     done < <("$BIN/uhuru-pakiti" list 2>/dev/null)
     if [ "${#rows[@]}" -gt 0 ]; then
         step karibu-5-pakiti
         IFS='|' read -r c1 c2 c3 <<< "$(t packs_cols)"
-        sel=$(z --list --checklist --height=380 --width=620 --text="$(t packs_ask)" --column="" --column="ID" --column="$c1" --column="$c2" --column="$c3" \
+        sel=$(z --list --checklist --height=380 --width=720 --text="$(t packs_ask)" --column="" --column="ID" --column="$c1" --column="$c3" --column="$c2" \
             --hide-column=2 --print-column=2 --separator=" " "${rows[@]}") || sel=""
         if [ -n "$sel" ] && [ "$DEMO" = 0 ]; then
             go=yes
@@ -204,9 +205,14 @@ fi
 if exe uhuru-protect; then
     step karibu-6-usalama
     line=$("$BIN/uhuru-protect" --check 2>/dev/null | tail -n 1)
-    kv() { printf '%s' "$line" | tr ',' '\n' | sed -n "s/^$1=//p" | head -n 1; }
+    # muundo halisi wa 'uhuru-protect --check': "PROTECT-OK n=10 ok=7 warn=1 info=2 bad=0 fw=ok,aa=ok,..." (nafasi kwanza, koma baadaye)
+    kv() { printf '%s' "$line" | tr ', ' '\n\n' | sed -n "s/^$1=//p" | head -n 1; }
     txt=$(t sec_text)
-    case "$line" in PROTECT-OK*|PROTECT-*) txt="$txt\n\n$(printf "$(t sec_stat)" "$(kv n)" "$(kv ok)" "$(kv warn)" "$(kv bad)")" ;; esac
+    sn=$(kv n); sk=$(kv ok); sw=$(kv warn); sb=$(kv bad)
+    case "$line:$sn$sk$sw$sb" in
+        PROTECT-*:*[!0-9]*|PROTECT-*:) ;;   # namba hazipo au si namba: usionyeshe mstari wa Hali badala ya kuonyesha tupu
+        PROTECT-*) txt="$txt\n\n$(printf "$(t sec_stat)" "$sn" "$sk" "$sw" "$sb")" ;;
+    esac
     if z --question --text="$txt" --ok-label="$(t sec_open)" --cancel-label="$(t next)" && [ "$DEMO" = 0 ]; then "$BIN/uhuru-protect" >/dev/null 2>&1 & fi
 fi
 

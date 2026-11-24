@@ -35,10 +35,18 @@ miss=""; for k in $keys; do for l in sw en fr; do grep -q "^ *$k:$l)\|[ ;]$k:$l)
 [ -z "$miss" ]; check "kila ujumbe wa Karibu upo kwa sw, en na fr (unakosekana:$miss)" $?
 grep -q "gh""p_\|github""_pat_\|s""k-[A-Za-z0-9]\{20,\}" "$KARIBU" "$PAKITI" "$PACKS"/*.pack; [ $? -ne 0 ]; check "hakuna siri/token kwenye faili za v19.2" $?
 
+XS="$B/etc/X11/Xsession.d/45uhuru-atspi-clean"
+[ -f "$XS" ]; check "Xsession.d/45uhuru-atspi-clean ipo" $?
+sh -n "$XS"; check "Xsession.d: syntax ya sh" $?
+has "Xsession.d: inaondoa AT_SPI_BUS kwa xprop" "$XS" "xprop -root -remove AT_SPI_BUS"
+! grep -qE '^[[:space:]]*(exit|return|set -e)' "$XS"; check "Xsession.d: haina exit/return/set -e (inasomwa ndani ya Xsession: ingeweza kuzuia kuingia)" $?
+grep -q 'xprop' "$XS" && grep -q '|| true' "$XS"; check "Xsession.d: makosa ya xprop yanapuuzwa" $?
+
 echo "2) uhuru-pakiti: faili za pakiti"
 export UHURU_PAKITI_DIR="$PACKS"
 out=$("$PAKITI" --check); case "$out" in PAKITI-OK,packs=3,pkgs=*) check "pakiti --check: $out" 0 ;; *) check "pakiti --check: $out" 1 ;; esac
 for id in ofisi shule wasanidi; do [ -f "$PACKS/$id.pack" ]; check "pakiti $id.pack ipo" $?; done
+for f in "$PACKS"/*.pack; do for l in sw en fr; do d=$(sed -n "s/^maelezo_$l=//p" "$f"); [ "${#d}" -le 58 ]; check "$(basename "$f") maelezo_$l ni mafupi (${#d} <= 58; hayakatiki kwenye dirisha)" $?; done; done
 "$PAKITI" list | awk -F'\t' 'NF==4{n++} END{exit n==3?0:1}'; check "pakiti list: mistari 3 yenye safu 4" $?
 LANG=fr_FR.UTF-8 "$PAKITI" list | grep -q '^ofisi.Bureautique'; check "pakiti list: jina la Kifaransa" $?
 LANG=en_US.UTF-8 "$PAKITI" list | grep -q '^shule.School'; check "pakiti list: jina la Kiingereza" $?
@@ -104,6 +112,7 @@ mkdir -p "$T/kb" "$T/wp"; for w in kilimanjaro zanzibar tanzanite kitenge tingat
 cat > "$T/bin/zenity" <<'S'
 #!/bin/bash
 echo "$*" >> "$ZLOG"
+echo "NOATB=${NO_AT_BRIDGE:-}" >> "${ENVLOG:-/dev/null}"
 [ -n "${UHURU_KARIBU_STEP:-}" ] && { cat "$UHURU_KARIBU_STEP" 2>/dev/null; echo; } >> "${STEPLOG:-/dev/null}"
 case "$*" in *--progress*) cat >/dev/null; exit 0 ;; esac
 line=$(head -n 1 "$ZANS" 2>/dev/null); [ -n "$line" ] || exit 1
@@ -113,7 +122,7 @@ exit "$rc"
 S
 chmod +x "$T/bin/zenity"
 for b in uhuru-lugha uhuru-mwonekano uhuru-protect uhuru-store uhuru-share uhuru-wallpaper; do
-    printf '#!/bin/bash\necho "%s $*" >> "$CALLS"\n[ "$1" = --get ] && { echo "${LUGHA_GET:-sw}"; exit 0; }\n[ "%s" = uhuru-protect ] && [ "$1" = --check ] && { echo "PROTECT-OK,n=10,ok=7,warn=1,info=2,bad=0,fw=ok"; exit 0; }\nexit 0\n' "$b" "$b" > "$T/kb/$b"
+    printf '#!/bin/bash\necho "%s $*" >> "$CALLS"\n[ "$1" = --get ] && { echo "${LUGHA_GET:-sw}"; exit 0; }\n[ "%s" = uhuru-protect ] && [ "$1" = --check ] && { echo "${PROTECT_LINE-PROTECT-OK n=10 ok=7 warn=1 info=2 bad=0 fw=ok,aa=ok,sysctl=ok}"; exit 0; }\nexit 0\n' "$b" "$b" > "$T/kb/$b"
 done
 cat > "$T/kb/uhuru-pakiti" <<'S'
 #!/bin/bash
@@ -127,7 +136,7 @@ exit 0
 S
 chmod +x "$T/kb"/*
 for c in pkill pgrep setsid nm-connection-editor xq; do printf '#!/bin/bash\necho "%s $*" >> "$CALLS"\n[ "%s" = xq ] && [ "$2" = xfce4-desktop ] && [ "$3" = -l ] && echo /backdrop/screen0/monitor0/workspace0/last-image\n[ "%s" = pgrep ] && exit 1\nexit 0\n' "$c" "$c" "$c" > "$T/bin/$c"; chmod +x "$T/bin/$c"; done
-export ZLOG="$T/zlog" ZANS="$T/zans" STEPLOG="$T/steplog"
+export ZLOG="$T/zlog" ZANS="$T/zans" STEPLOG="$T/steplog" ENVLOG="$T/envlog"
 kenv() { env PATH="$T/bin:$PATH" HOME="$T/home" DISPLAY=:0 UHURU_ZENITY="$T/bin/zenity" UHURU_KARIBU_BIN="$T/kb" UHURU_XFCONF="$T/bin/xq" \
     UHURU_KARIBU_DONE="$T/home/.config/uhuru/karibu.done" UHURU_KARIBU_CI="$T/ci1 $T/ci2" UHURU_KARIBU_LIVE=no UHURU_WALLPAPER_DIR="$T/wp" "$@"; }
 reset() { rm -rf "$T/home"; mkdir -p "$T/home"; : > "$CALLS"; : > "$ZLOG"; printf '%s\n' "$@" > "$ZANS"; }
@@ -150,7 +159,26 @@ has "A: ripoti ya usalama imesomwa" "$CALLS" "uhuru-protect --check"
 has "A: dirisha la kwanza ni Kiswahili" "$ZLOG" "--title=Karibu Uhuru"
 has "A: baada ya kuchagua English madirisha yanakuwa Kiingereza" "$ZLOG" "--title=Welcome to Uhuru"
 has "A: ujumbe wa pakiti kwa Kiingereza" "$ZLOG" "Add apps by pack"
-has "A: takwimu za usalama zinaonyeshwa (vipengele 10, vizuri 7)" "$ZLOG" "10 checks, 7 good, 1 warnings, 0 risks"
+has "A: takwimu za usalama zinaonyeshwa (muundo halisi wa nafasi: 10 checks, 7 good)" "$ZLOG" "10 checks, 7 good, 1 warnings, 0 risks"
+has "A: safu ya 'Installed' iko kabla ya maelezo (haikatiki kulia)" "$ZLOG" "--column=Pack --column=Installed --column=Description"
+has "A: dirisha la pakiti lina upana wa kutosha" "$ZLOG" "--width=720"
+has "A: mstari wa pakiti una idadi kabla ya maelezo" "$ZLOG" "FALSE ofisi Ofisi 0/6 Barua pepe na PDF"
+grep -q 'NOATB=1' "$ENVLOG"; check "A: NO_AT_BRIDGE=1 inafikia zenity (hakuna onyo la accessibility bus)" $?
+! grep -q 'NOATB=$' "$ENVLOG"; check "A: kila dirisha lilipata NO_AT_BRIDGE=1" $?
+
+# A2) ripoti ya usalama: muundo wa koma bado unasomwa; mstari mbovu au tupu hauonyeshi mstari wa Hali tupu
+for pl in "PROTECT-OK,n=4,ok=3,warn=1,info=0,bad=0" "PROTECT-FAIL n=4 ok=2 warn=1 info=0 bad=1"; do
+    reset "0|" "1|" "1|" "1|" "1|" "1|" "1|" "1|"
+    kenv PROTECT_LINE="$pl" "$KARIBU" --demo >/dev/null 2>&1
+    case "$pl" in *,*) want="vipengele 4, vizuri 3, tahadhari 1, hatari 0" ;; *) want="vipengele 4, vizuri 2, tahadhari 1, hatari 1" ;; esac
+    has "A2: '$pl' inasomwa" "$ZLOG" "$want"
+done
+for pl in "PROTECT-OK" "" "PROTECT-OK n= ok= warn= bad="; do
+    reset "0|" "1|" "1|" "1|" "1|" "1|" "1|" "1|"
+    kenv PROTECT_LINE="$pl" "$KARIBU" --demo >/dev/null 2>&1
+    hasnt "A2: mstari mbovu '$pl' hauonyeshi 'Hali:' tupu" "$ZLOG" "Hali: vipengele ,"
+    hasnt "A2: mstari mbovu '$pl' hauonyeshi 'Hali' kabisa" "$ZLOG" "Hali: vipengele"
+done
 
 # B) Baadaye kwenye dirisha la kwanza: hakuna kinachobadilika, haihifadhiwi
 reset "1|"

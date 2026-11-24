@@ -46,3 +46,11 @@ Picha hizi ziko kwenye ripoti ndogo (`screens/`), kwa hiyo unaweza kuziona kabla
 
 Kikomo: demo inaonyesha mwonekano wa madirisha, si kwamba kubadili lugha/wallpaper/kusakinisha kunafanya kazi kwenye mfumo halisi (hayo yanajaribiwa na `scripts/karibu-selftest.sh` kwa zana bandia).
 Hatua ya mtandao (Wi-Fi) haionyeshwi kwenye demo.
+
+## Marekebisho ya v19.2.2 (kutoka picha halisi za CI)
+Picha za CI zilionyesha kasoro mbili ambazo majaribio ya zana bandia hayakuziona:
+1. **Dirisha la pakiti:** safu ya "Zilizopo" na sehemu ya maelezo vilikatika kulia. Sasa idadi iko kabla ya maelezo, dirisha ni pana (720), na maelezo ni mafupi (si zaidi ya herufi 58).
+2. **Usalama:** mstari wa Hali ulionyesha "vipengele , vizuri , ..." tupu. Muundo halisi wa `uhuru-protect --check` ni `PROTECT-OK n=10 ok=7 warn=1 ...` (nafasi), si koma (koma zilikuwa kwenye mstari wa telemetry tu). Parser sasa inasoma zote mbili, na mstari wa Hali haionyeshwi kabisa kama namba hazipo.
+
+Pia: `NO_AT_BRIDGE=1` kwa Karibu (huzuia onyo la "accessibility bus" kwenye kila dirisha), na `Xsession.d/45uhuru-atspi-clean` inaondoa mali ya `AT_SPI_BUS` iliyoachwa na greeter (uid 104).
+Hiyo ya mwisho ni **nadharia** (kosa linataja `/run/user/104/at-spi/bus_0`, wakati `tester` ni uid 1001); `postcheck` itaonyesha kama onyo la AT-SPI limeisha.
