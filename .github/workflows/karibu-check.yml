@@ -15,6 +15,9 @@ on:
       - "scripts/telemetry-selftest.sh"
       - "scripts/v192-postcheck.sh"
       - "scripts/v1921-postcheck.sh"
+      - "scripts/v1923-postcheck.sh"
+      - "scripts/protect-selftest.sh"
+      - "config/includes.chroot/usr/local/bin/uhuru-protect"
       - "scripts/boot-screens.sh"
       - ".github/workflows/karibu-check.yml"
   workflow_dispatch: {}
@@ -30,3 +33,5 @@ jobs:
         run: bash scripts/karibu-selftest.sh
       - name: Majaribio ya telemetry na hukumu ya e2e
         run: bash scripts/telemetry-selftest.sh
+      - name: Majaribio ya Kituo cha Ulinzi (AppArmor kwa mtumiaji wa kawaida)
+        run: bash scripts/protect-selftest.sh

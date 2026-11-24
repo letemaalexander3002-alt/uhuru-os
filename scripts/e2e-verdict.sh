@@ -155,13 +155,18 @@ if [ -z "$P9" ]; then
     fail "awamu ya 9: hakuna ripoti ya UHURU-P9 (uhuru-protect au telemetry haikufanya kazi)"
 else
     if p9 'fw=FW-OK'; then echo "CHECK PASS: e2e: awamu ya 9: ngome ya moto (nftables) inafanya kazi: kila kinachoingia kinabanwa ($(printf '%s\n' "$P9" | grep -o 'fw=[^ ]*' | tail -n 1))"; else fail "awamu ya 9: ngome ya moto haifanyi kazi ($(printf '%s\n' "$P9" | grep -o 'fw=[^ ]*' | sort -u | tr '\n' ' '))"; fi
-    if p9 'protect=PROTECT-OK,.*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi hakioni kipengele chochote chenye hatari"; else fail "awamu ya 9: Kituo cha Ulinzi kimeona hatari ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
-    if p9 'protect=PROTECT-OK,.*fw=ok,aa=ok,sysctl=ok,upd=ok'; then echo "CHECK PASS: e2e: awamu ya 9: AppArmor, kernel iliyoimarishwa na sasisho za usalama vimewekwa"; else fail "awamu ya 9: AppArmor/kernel/sasisho si sawa [$(printf '%s\n' "$P9" | grep -o 'aadiag=[^ ]*' | tail -n 1)] ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
+    if p9 'protect=PROTECT-OK,[^ ]*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi hakioni kipengele chochote chenye hatari"; else fail "awamu ya 9: Kituo cha Ulinzi kimeona hatari ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
+    if p9 'protect=PROTECT-OK,[^ ]*fw=ok,aa=ok,sysctl=ok,upd=ok'; then echo "CHECK PASS: e2e: awamu ya 9: AppArmor, kernel iliyoimarishwa na sasisho za usalama vimewekwa"; else fail "awamu ya 9: AppArmor/kernel/sasisho si sawa [$(printf '%s\n' "$P9" | grep -o 'aadiag=[^ ]*' | tail -n 1)] ($(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | sort -u | tail -n 1))"; fi
     if p9 'usb=USBSCAN-OK'; then echo "CHECK PASS: e2e: awamu ya 9: Flash Safe inatambua virus vya shortcut/autorun, haikosei faili safi, na inasafisha kwa karantini"; else fail "awamu ya 9: Flash Safe selftest imeshindwa ($(printf '%s\n' "$P9" | grep -o 'usb=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     if p9 'watch=[1-9]'; then echo "CHECK PASS: e2e: awamu ya 9: mlinzi wa flash (uhuru-usbwatch) anakimbia kwenye session ya mtumiaji"; else fail "awamu ya 9: mlinzi wa flash hakimbii kwenye session ($P9LAST)"; fi
     if p9 'sign=SIGN-OK'; then echo "CHECK PASS: e2e: awamu ya 9: saini za kidijitali (ed25519) zinafanya kazi, na mabadiliko ya faili yanagunduliwa"; else fail "awamu ya 9: uhuru-sign imeshindwa ($(printf '%s\n' "$P9" | grep -o 'sign=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     if p9 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 9: dirisha la Kituo cha Ulinzi linajengwa ndani ya session"; else fail "awamu ya 9: Kituo cha Ulinzi hakifunguki ndani ya session ($(printf '%s\n' "$P9" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     echo "CHECK INFO: e2e: awamu ya 9: $(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | tail -n 1)"
+    # v19.2.3: Kituo cha Ulinzi kama mtumiaji wa kawaida (kile Karibu Uhuru na mtumiaji wanachokiona), si root peke yake
+    if p9 'uprot='; then
+        if p9 'uprot=PROTECT-OK,[^ ]*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari yoyote ($(printf '%s\n' "$P9" | grep -o 'uprot=[^ ]*' | tail -n 1 | cut -c1-60))"
+        else fail "awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi ($(printf '%s\n' "$P9" | grep -o 'uprot=[^ ]*' | sort -u | tail -n 1 | cut -c1-200))"; fi
+    fi
 fi
 # ---- Karibu Uhuru (v19.2.1): madirisha yote 8 yameonekana kwenye desktop halisi na kupigwa picha (25..32) ----
 if has 'E2E karibu-start=yes'; then

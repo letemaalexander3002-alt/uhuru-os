@@ -251,7 +251,7 @@ p8check() {
 # v17.1: ukaguzi wa awamu ya 9 (ulinzi: ngome ya moto, AppArmor, kernel, flash, saini, Kituo cha Ulinzi)
 P9PID=""
 p9check() {
-    local fw pr us sg wc=0 gui=none xu
+    local fw pr us sg wc=0 gui=none xu up=none
     fw=$(timeout -k 1 15 /usr/local/sbin/uhuru-firewall status --ci 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:-' ' ' | tr -s ' ' ',' | cut -c1-80)
     pr=$(timeout -k 2 30 /usr/local/bin/uhuru-protect --check 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:-' ' ' | tr -s ' ' ',' | cut -c1-220)
     us=$(timeout -k 2 40 /usr/local/bin/uhuru-usbscan --selftest 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:-' ' ' | tr -s ' ' ',' | cut -c1-60)
@@ -262,6 +262,9 @@ p9check() {
             wc=$(timeout -k 1 3 pgrep -u "$xu" -fc '[u]huru-usbwatch' 2>/dev/null)
             gui=$(timeout -k 2 40 runuser -u "$xu" -- env DISPLAY=:0 XAUTHORITY="/home/$xu/.Xauthority" /usr/local/bin/uhuru-protect --smoke 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,-' ' ' | tr -s ' ' ',' | cut -c1-70)
             [ -n "$gui" ] || gui=empty
+            # v19.2.3: Kituo cha Ulinzi kama mtumiaji wa KAWAIDA (si root): ndicho anachokiona mtu halisi (na Karibu Uhuru); root peke yake ilificha hatari ya uongo ya AppArmor
+            up=$(timeout -k 2 30 runuser -u "$xu" -- /usr/local/bin/uhuru-protect --check 2>&1 | tail -n 1 | tr -c 'A-Za-z0-9=_.,/:-' ' ' | tr -s ' ' ',' | cut -c1-220)
+            [ -n "$up" ] || up=empty
         fi
     fi
     local aadiag
@@ -269,7 +272,7 @@ p9check() {
     case "$fw|$pr|$us|$sg|$gui" in
         "FW-OK"*"|PROTECT-OK,"*"|USBSCAN-OK"*"|SIGN-OK"*"|SMOKE-OK"*) { [ "${wc:-0}" -ge 1 ] 2>/dev/null && touch /run/uhuru-p9.done; } 2>/dev/null || true ;;
     esac
-    printf 'UHURU-P9 fw=%s protect=%s usb=%s sign=%s watch=%s gui=%s aadiag=%s' "${fw:-empty}" "${pr:-empty}" "${us:-empty}" "${sg:-empty}" "${wc:-0}" "$gui" "${aadiag:-none}"
+    printf 'UHURU-P9 fw=%s protect=%s usb=%s sign=%s watch=%s gui=%s aadiag=%s uprot=%s' "${fw:-empty}" "${pr:-empty}" "${us:-empty}" "${sg:-empty}" "${wc:-0}" "$gui" "${aadiag:-none}" "$up"
 }
 n=0; RPID=""; P4PID=""; P5PID=""; P51PID=""; P6PID=""
 while :; do

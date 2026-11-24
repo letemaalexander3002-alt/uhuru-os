@@ -45,6 +45,40 @@ printf 'UHURU-STATE n=1 x=y\n' > "$T/s/serial.log"
 out=$(bash "$VERD" "$T/s" 2>&1)
 printf '%s\n' "$out" | grep -q 'CHECK FAIL: e2e: awamu ya 7: hakuna ripoti'; check "verdict: P7 ikikosekana kweli bado ni FAIL (hukumu haijalegezwa)" $?
 
+echo "3) e2e-verdict: P9 (root na mtumiaji wa kawaida)"
+p9line() { printf 'UHURU-P9 fw=FW-OK,x protect=%s usb=USBSCAN-OK,x sign=SIGN-OK,x watch=1 gui=SMOKE-OK aadiag=k=Y%s\n' "$1" "${2:+ uprot=$2}"; }
+OKP='PROTECT-OK,n=10,ok=7,warn=1,info=2,bad=0,fw=ok,aa=ok,sysctl=ok,upd=ok,disk=info'
+BADP='PROTECT-FAIL,n=10,ok=6,warn=1,info=2,bad=1,fw=ok,aa=bad,sysctl=ok,upd=ok,disk=info'
+vrun() { mkdir -p "$T/p9"; printf 'QEMU accel: kvm\nE2E telemetry=ok\n' > "$T/p9/e2e.log"; { echo 'UHURU-STATE n=1 x=y'; p9line "$1" "${2:-}"; } > "$T/p9/serial.log"; bash "$VERD" "$T/p9" 2>&1; }
+vrun "$OKP" "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari'; check "P9: mtumiaji wa kawaida bila hatari = PASS" $?
+vrun "$OKP" "$BADP" | grep -q 'CHECK FAIL: e2e: awamu ya 9: mtumiaji wa kawaida anaona hatari'; check "P9: mtumiaji wa kawaida anaona hatari (root ok) = FAIL (kosa la v19.2.2 lingegunduliwa)" $?
+vrun "$OKP" "" | grep -q 'mtumiaji wa kawaida'; [ $? -ne 0 ]; check "P9: ripoti bila uprot (ya zamani) haizalishi PASS wala FAIL ya uongo" $?
+vrun "$BADP" "$OKP" | grep -q 'CHECK FAIL: e2e: awamu ya 9: Kituo cha Ulinzi kimeona hatari'; check "P9: root ina hatari lakini mtumiaji hana = bado FAIL (regex haivuki mipaka ya sehemu)" $?
+vrun "$BADP" "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: AppArmor, kernel'; [ $? -ne 0 ]; check "P9: aa=bad ya root haipiti kwa sababu ya uprot nzuri" $?
+ROOTW='PROTECT-OK,n=10,ok=6,warn=2,info=2,bad=0,fw=warn,aa=ok,sysctl=ok,upd=ok,disk=info'
+vrun "$ROOTW" "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: AppArmor, kernel'; [ $? -ne 0 ]; check "P9: fw=warn ya root haifichwi na fw=ok ya uprot (regex haivuki mipaka ya sehemu)" $?
+
+echo "4) telemetry: p9check inaongeza uprot= (mahali sahihi tu)"
+awk '/^p9check\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$TEL" > "$T/p9.sh"
+[ -s "$T/p9.sh" ]; check "p9check() imepatikana" $?
+grep -q 'up=\$(timeout -k 2 30 runuser -u "\$xu" -- /usr/local/bin/uhuru-protect --check' "$T/p9.sh"; check "p9check inaendesha uhuru-protect --check kama mtumiaji wa session (runuser)" $?
+grep -q "uprot=%s" "$T/p9.sh"; check "p9check inaandika uprot= kwenye mstari wa P9" $?
+[ "$(grep -c 'up=\$(timeout' "$TEL")" = 1 ]; check "uprot inahesabiwa mara moja tu kwenye faili zima (si kwenye kazi nyingine kwa bahati mbaya)" $?
+# endesha p9check halisi kwa zana bandia: mtumiaji wa session anaonekana, na uprot inatoka kwenye uhuru-protect inayoendeshwa KAMA MTUMIAJI huyo
+mkdir -p "$T/ub"
+printf '#!/bin/bash\nif [ "$1" = "-C" ]; then echo tester; else exec /bin/ps "$@"; fi\n' > "$T/ub/ps"
+printf '#!/bin/bash\necho "runuser-kama:$2" >> "$T/runuser.log"; shift 3; exec "$@"\n' > "$T/ub/runuser"
+chmod +x "$T/ub"/*
+if [ "$(id -u)" = 0 ] && mkdir -p /var/lib 2>/dev/null && [ ! -e /var/lib/uhuru-setup.done ] && [ ! -e /usr/local/bin/uhuru-protect ]; then
+    printf '#!/bin/bash\n[ "$1" = --check ] && echo "PROTECT-OK n=10 ok=7 warn=1 info=2 bad=0 fw=ok,aa=ok"\nexit 0\n' > /usr/local/bin/uhuru-protect; chmod +x /usr/local/bin/uhuru-protect; : > /var/lib/uhuru-setup.done
+    out=$(PATH="$T/ub:$PATH" T="$T" bash -c ". $T/p9.sh; p9check" 2>/dev/null)
+    rm -f /usr/local/bin/uhuru-protect /var/lib/uhuru-setup.done
+    printf '%s' "$out" | grep -q ' uprot=PROTECT-OK,n=10,ok=7,warn=1,info=2,bad=0,fw=ok,aa=ok,$'; check "p9check halisi: uprot= ina matokeo ya uhuru-protect kama mtumiaji (imepatikana: ${out##* })" $?
+    grep -q 'runuser-kama:tester' "$T/runuser.log" 2>/dev/null; check "p9check halisi: uhuru-protect --check iliendeshwa kama 'tester', si root" $?
+else
+    echo "  (si root au /usr/local/bin/uhuru-protect ipo: jaribio la p9check halisi limeruka)"
+fi
+
 echo
 echo "=== JUMLA: $ok OK, $fail FAIL ==="
 [ "$fail" = 0 ]

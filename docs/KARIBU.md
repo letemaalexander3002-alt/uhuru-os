@@ -54,3 +54,10 @@ Picha za CI zilionyesha kasoro mbili ambazo majaribio ya zana bandia hayakuziona
 
 Pia: `NO_AT_BRIDGE=1` kwa Karibu (huzuia onyo la "accessibility bus" kwenye kila dirisha), na `Xsession.d/45uhuru-atspi-clean` inaondoa mali ya `AT_SPI_BUS` iliyoachwa na greeter (uid 104).
 Hiyo ya mwisho ni **nadharia** (kosa linataja `/run/user/104/at-spi/bus_0`, wakati `tester` ni uid 1001); `postcheck` itaonyesha kama onyo la AT-SPI limeisha.
+
+## Marekebisho ya v19.2.3 (kutoka picha ya 30 ya CI na picha ya 24 ya v19.1)
+- **"Hatari 1" ya uongo:** Karibu ilionyesha "vizuri 6, tahadhari 1, hatari 1" ingawa telemetry (root) ilisema `ok=7, bad=0`. Chanzo ni `uhuru-protect`: orodha ya profile za AppArmor
+  (`/sys/kernel/security/apparmor/profiles`) inasomeka na root pekee, na huduma ya `apparmor` ni `inactive` kwenye live. Mtumiaji wa kawaida alipata AppArmor nyekundu na bango "Kuna hatari" kwenye Kituo cha Ulinzi (kasoro ya zamani, iliyoonekana pia kwenye picha 24 ya v19.1).
+  Sasa, bila ruhusa ya kusoma na kukiwa na kernel iliyowashwa na profile zilizopo kwenye diski, kipengele ni `ok` chenye maelezo kwamba hali kamili ya kupakiwa inaonekana kwa msimamizi tu. Kernel ikizimwa, au profile zikikosekana kwenye diski, bado ni `bad`. Tabia ya root na ya huduma `active` haijabadilika.
+- **CI sasa inaona kile anachokiona mtumiaji:** telemetry P9 inaongeza `uprot=` (`uhuru-protect --check` kama mtumiaji wa kawaida), na `e2e-verdict.sh` inaikagua (FAIL kama `bad>0`). Regex za P9 pia zimebanwa zisivuke mipaka ya sehemu (zamani `.*` ingeweza kupita kwa sababu ya sehemu nyingine ya mstari).
+- **`postcheck`:** onyo la AT-SPI sasa linahesabu makosa halisi ("Couldn't connect to accessibility bus"), si mistari ya kawaida ya journal ya `org.a11y.Bus`.
