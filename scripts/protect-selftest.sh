@@ -44,9 +44,9 @@ run_case() { rm -rf "$T/rc"; cp -r "$T/root" "$T/rc"; python3 "$T/t.py" "$PROT" 
 out=$(run_case root-readable);            eq() { case "$1" in "$2"*) check "$3" 0 ;; *) check "$3 (imepatikana: $1)" 1 ;; esac; }
 eq "$out" "ok|Imewashwa: profile 2 zimepakiwa" "root: profile zinasomeka, huduma inactive -> ok (tabia ya zamani haijabadilika)"
 out=$(run_case service-active);           eq "$out" "ok|Imewashwa: programu zimefungwa" "huduma active -> ok (tabia ya zamani)"
-out=$(run_case user-unreadable);          eq "$out" "ok|Imewashwa kwenye kernel; profile 3 zimewekwa" "mtumiaji wa kawaida: /sys/kernel/security haionekani, profile 3 zipo kwenye diski (folda hazihesabiwi) -> ok, SI hatari ya uongo (hali halisi ya CI)"
+out=$(run_case user-unreadable);          eq "$out" "ok|Imewashwa kwenye kernel na AppArmor imewekwa" "mtumiaji wa kawaida: /sys/kernel/security haionekani, profile zipo kwenye diski -> ok, SI hatari ya uongo (hali halisi ya CI)"
 out=$(run_case root-nofile);              eq "$out" "bad|Haijawashwa" "root bila faili la profile la kernel -> bado bad (fallback ni ya mtumiaji wa kawaida tu)"
-out=$(run_case user-unreadable-nodisk);   eq "$out" "bad|Haijawashwa" "mtumiaji wa kawaida: profile hazisomeki na hazipo kwenye diski -> bado bad (ukaguzi haujalegezwa)"
+out=$(run_case user-unreadable-nodisk);   eq "$out" "bad|Haijawashwa" "mtumiaji wa kawaida: bila profile kwenye diski na bila kifurushi -> bado bad (ukaguzi haujalegezwa)"
 out=$(run_case kernel-off);               eq "$out" "bad|Haijawashwa" "kernel imezimwa -> bad hata kama profile zipo kwenye diski"
 
 echo "2b) check_apparmor kama mtumiaji HALISI asiye root (ruhusa halisi za mfumo wa faili, bila kubadilisha os.*)"
@@ -65,12 +65,32 @@ if sys.argv[3] == "nobody":
     os.setgid(65534); os.setuid(65534)
 loader = importlib.machinery.SourceFileLoader("uhuru_protect", sys.argv[1])
 m = importlib.util.module_from_spec(importlib.util.spec_from_loader("uhuru_protect", loader)); loader.exec_module(m)
-m.run = lambda argv, timeout=6: (0, "inactive")   # huduma 'inactive' kama kwenye live ya CI
-r = m.check_apparmor(); print(r[2] + "|" + r[3])
+mode = sys.argv[4] if len(sys.argv) > 4 else ""
+def fake_run(argv, timeout=6):
+    if argv and argv[0] == "dpkg-query":
+        return (0, "ii ") if mode != "nopkg" else (1, "")   # 'nopkg': kifurushi cha apparmor hakijawekwa
+    return (0, "inactive")   # huduma 'inactive' kama kwenye live ya CI
+m.run = fake_run
+if mode == "dbg":
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        m.cmd_aa_debug()
+    print(buf.getvalue().strip())
+else:
+    r = m.check_apparmor(); print(r[2] + "|" + r[3])
 EOPY
     cp "$PROT" "$T/prot.py"; chmod 644 "$T/prot.py"; chmod 644 "$T/real.py"
     out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody 2>&1 | tail -n 1)
-    case "$out" in "ok|Imewashwa kwenye kernel; profile 3 zimewekwa"*) check "mtumiaji halisi 'nobody': /sys/kernel/security 0700 -> ok (si hatari ya uongo)" 0 ;; *) check "mtumiaji halisi 'nobody' (imepatikana: $out)" 1 ;; esac
+    case "$out" in "ok|Imewashwa kwenye kernel na AppArmor imewekwa"*) check "mtumiaji halisi 'nobody': /sys/kernel/security 0700 + profile kwenye diski -> ok (si hatari ya uongo)" 0 ;; *) check "mtumiaji halisi 'nobody' (imepatikana: $out)" 1 ;; esac
+    # hali inayoshukiwa kwenye ISO: /etc/apparmor.d haina faili za kawaida, lakini kifurushi cha apparmor kimewekwa
+    rm -f "$RT/etc/apparmor.d/usr.sbin.cupsd" "$RT/etc/apparmor.d/usr.bin.man" "$RT/etc/apparmor.d/sbin.dhclient"; mkdir -p "$RT/etc/apparmor.d/abstractions"
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody pkg 2>&1 | tail -n 1)
+    case "$out" in "ok|Imewashwa kwenye kernel na AppArmor imewekwa"*) check "mtumiaji halisi: bila faili kwenye diski lakini kifurushi 'apparmor' kimewekwa -> ok" 0 ;; *) check "mtumiaji halisi bila faili + pkg (imepatikana: $out)" 1 ;; esac
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody nopkg 2>&1 | tail -n 1)
+    case "$out" in "bad|Haijawashwa"*) check "mtumiaji halisi: bila faili na bila kifurushi -> bado bad (ukaguzi haujalegezwa)" 0 ;; *) check "mtumiaji halisi bila faili/pkg (imepatikana: $out)" 1 ;; esac
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody dbg 2>&1 | tail -n 1)
+    case "$out" in "AA-DEBUG euid=65534 on=1 act=inactive prof=0 readable=0 disk=0 pkg=1 decision=ok via=userview") check "--aa-debug inaonyesha ukweli wote kwa mtumiaji halisi" 0 ;; *) check "--aa-debug (imepatikana: $out)" 1 ;; esac
     out=$(python3 "$T/real.py" "$T/prot.py" "$RT" root 2>&1 | tail -n 1)
     case "$out" in "ok|Imewashwa: profile 1 zimepakiwa"*) check "root halisi: profile zinasomeka -> ok (njia ya zamani)" 0 ;; *) check "root halisi (imepatikana: $out)" 1 ;; esac
 else

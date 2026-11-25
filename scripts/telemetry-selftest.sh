@@ -70,6 +70,8 @@ awk '/^p9check\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$TEL" > "$T/p9.sh"
 [ -s "$T/p9.sh" ]; check "p9check() imepatikana" $?
 grep -q 'up=\$(timeout -k 2 30 runuser -u "\$xu" -- /usr/local/bin/uhuru-protect --check' "$T/p9.sh"; check "p9check inaendesha uhuru-protect --check kama mtumiaji wa session (runuser)" $?
 grep -q "uprot=%s" "$T/p9.sh"; check "p9check inaandika uprot= kwenye mstari wa P9" $?
+grep -q 'uhuru-protect --aa-debug' "$T/p9.sh" && grep -q "uaa=%s" "$T/p9.sh"; check "p9check inaandika uaa= (ukweli wa AppArmor kwa mtumiaji wa session)" $?
+[ "$(grep -c 'uhuru-protect --aa-debug' "$TEL")" = 1 ]; check "uaa inahesabiwa mara moja tu kwenye faili zima" $?
 [ "$(grep -c 'up=\$(timeout' "$TEL")" = 1 ]; check "uprot inahesabiwa mara moja tu kwenye faili zima (si kwenye kazi nyingine kwa bahati mbaya)" $?
 # endesha p9check halisi kwa zana bandia: mtumiaji wa session anaonekana, na uprot inatoka kwenye uhuru-protect inayoendeshwa KAMA MTUMIAJI huyo
 mkdir -p "$T/ub"
@@ -77,10 +79,10 @@ printf '#!/bin/bash\nif [ "$1" = "-C" ]; then echo tester; else exec /bin/ps "$@
 printf '#!/bin/bash\necho "runuser-kama:$2" >> "$T/runuser.log"; shift 3; exec "$@"\n' > "$T/ub/runuser"
 chmod +x "$T/ub"/*
 if [ "$(id -u)" = 0 ] && mkdir -p /var/lib 2>/dev/null && [ ! -e /var/lib/uhuru-setup.done ] && [ ! -e /usr/local/bin/uhuru-protect ]; then
-    printf '#!/bin/bash\n[ "$1" = --check ] && echo "PROTECT-OK n=10 ok=7 warn=1 info=2 bad=0 fw=ok,aa=ok"\nexit 0\n' > /usr/local/bin/uhuru-protect; chmod +x /usr/local/bin/uhuru-protect; : > /var/lib/uhuru-setup.done
+    printf '#!/bin/bash\n[ "$1" = --check ] && echo "PROTECT-OK n=10 ok=7 warn=1 info=2 bad=0 fw=ok,aa=ok"\n[ "$1" = --aa-debug ] && echo "AA-DEBUG euid=1001 on=1 act=inactive prof=0 readable=0 disk=0 pkg=1 decision=ok via=userview"\nexit 0\n' > /usr/local/bin/uhuru-protect; chmod +x /usr/local/bin/uhuru-protect; : > /var/lib/uhuru-setup.done
     out=$(PATH="$T/ub:$PATH" T="$T" bash -c ". $T/p9.sh; p9check" 2>/dev/null)
     rm -f /usr/local/bin/uhuru-protect /var/lib/uhuru-setup.done
-    printf '%s' "$out" | grep -q ' uprot=PROTECT-OK,n=10,ok=7,warn=1,info=2,bad=0,fw=ok,aa=ok,$'; check "p9check halisi: uprot= ina matokeo ya uhuru-protect kama mtumiaji (imepatikana: ${out##* })" $?
+    printf '%s' "$out" | grep -q ' uprot=PROTECT-OK,n=10,ok=7,warn=1,info=2,bad=0,fw=ok,aa=ok, uaa=AA-DEBUG,euid=1001,on=1,act=inactive,prof=0,readable=0,disk=0,pkg=1,decision=ok,via=userview,$'; check "p9check halisi: uprot= ina matokeo ya uhuru-protect kama mtumiaji (imepatikana: ${out##* })" $?
     grep -q 'runuser-kama:tester' "$T/runuser.log" 2>/dev/null; check "p9check halisi: uhuru-protect --check iliendeshwa kama 'tester', si root" $?
 else
     echo "  (si root au /usr/local/bin/uhuru-protect ipo: jaribio la p9check halisi limeruka)"

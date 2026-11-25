@@ -68,3 +68,11 @@ Ukaguzi mpya wa mtumiaji wa kawaida (`uprot=`) ulishindwa kwenye CI ya v19.2.3: 
 `os.path.exists()` inarudisha `False`, na tawi la marekebisho likarukwa. Jaribio la v19.2.3 lilifanya mfano usio sahihi (faili lipo ila halisomeki), kwa hiyo lilipita.
 Sasa fallback inatumika kwa mtumiaji asiye root (`os.geteuid() != 0`) ambaye hawezi kusoma faili (kwa sababu yoyote), kukiwa na kernel iliyowashwa na profile kwenye diski; root bila faili bado ni `bad`.
 Hukumu pia imerekebishwa: P9 za mwanzo (`uprot=none`, kabla ya session ya mtumiaji) hazihesabiwi, na ujumbe wa FAIL unaonyesha matokeo halisi ya `uhuru-protect`.
+
+## Marekebisho ya v19.2.5 (CI ya v19.2.4 ilikataa tena)
+`aa=bad` ilibaki kwa mtumiaji wa kawaida baada ya v19.2.4 (picha 30: "hatari 1"). Uamuzi wa v19.2.4 ulitegemea kuwepo kwa faili za kawaida kwenye `/etc/apparmor.d`
+na hatukuwa na ushahidi kwamba zipo kwenye ISO. Sasa uamuzi umetengwa (`aa_facts()` + `aa_decide()`): mtumiaji asiye root asiyeweza kusoma orodha ya kernel anapata `ok`
+kama kernel imewashwa na AppArmor imewekwa (kifurushi `apparmor` AU profile kwenye diski); bila hivyo bado ni `bad`. Root anapimwa kikamilifu kama zamani.
+`uhuru-protect --aa-debug` inachapisha ukweli wote (`AA-DEBUG euid=.. on=.. act=.. prof=.. readable=.. disk=.. pkg=.. decision=.. via=..`), na telemetry P9 inaubeba kama `uaa=`:
+CI inaonyesha sasa KWA NINI uamuzi ni ok/bad kwa mtumiaji halisi, si kubahatisha. Majaribio yanatumia ruhusa halisi za mfumo wa faili (mtumiaji `nobody`, `/sys/kernel/security` 0700).
+Maoni ya harness: picha 23/24 za CI ya v19.2.4 zinaonyesha herufi zilizodondoka kwenye amri zilizotumwa kwa QEMU ("uhuinstaller", "huru-protect"); hiyo ni tatizo la zamani la kutuma funguo, si la Karibu.

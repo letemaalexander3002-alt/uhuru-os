@@ -5,6 +5,7 @@
   uhuru-protect           fungua Kituo cha Ulinzi
   uhuru-protect --check   hali ya kila kipengele kwa mstari mmoja (kwa CI; msimbo 0 = hakuna 'bad')
   uhuru-protect --smoke   jenga dirisha bila kulionyesha (kwa CI)
+  uhuru-protect --aa-debug   ukweli wa AppArmor ambao uamuzi unautegemea (kwa CI: kile mtumiaji anachokiona)
 """
 import glob
 import os
@@ -79,22 +80,41 @@ def check_firewall():
     return ("fw", "Ngome ya moto", "bad", "Haifanyi kazi (huduma=%s, wasifu=%s)." % (act or "?", prof), ("Washa (UMMA)", "umma"))
 
 
-def check_apparmor():
-    on = read("/sys/module/apparmor/parameters/enabled") == "Y"
+def aa_facts():
+    """Ukweli wote ambao uamuzi wa AppArmor unautegemea (pia unachapishwa na --aa-debug ili CI ionyeshe kile mtumiaji halisi anachokiona)."""
+    profpath = "/sys/kernel/security/apparmor/profiles"
     rc, act = run(["systemctl", "is-active", "apparmor"])
-    prof = [l for l in read("/sys/kernel/security/apparmor/profiles").split("\n") if l.strip()]
-    if on and not act == "active" and prof:
-        return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa: profile %d zimepakiwa kwenye kernel." % len(prof), None)
-    if on and act == "active":
-        return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa: programu zimefungwa kwenye mipaka yake.", None)
-    # v19.2.3/4: bila ruhusa ya msimamizi orodha ya profile za kernel haisomeki, na huduma ya 'apparmor' inaweza kuwa 'inactive' kwenye live ingawa profile zimepakiwa.
-    # Folda /sys/kernel/security ni ya root pekee (0700): mtumiaji wa kawaida hawezi hata kuona faili (os.path.exists inarudisha False; v19.2.3 ilitegemea hilo na haikufanya kazi kwenye CI).
-    # Hapo si 'bad' (ilionyesha hatari ya uongo kwa kila mtumiaji wa kawaida). Tunathibitisha tunachoweza: kernel imewashwa na profile zipo kwenye diski.
-    if on and os.geteuid() != 0 and not os.access(p("/sys/kernel/security/apparmor/profiles"), os.R_OK):
-        disk = [f for f in glob.glob(p("/etc/apparmor.d/*")) if os.path.isfile(f) and not f.endswith((".dpkg-new", ".dpkg-old", ".dpkg-dist"))]
-        if disk:
-            return ("aa", "AppArmor (kufungia programu)", "ok", "Imewashwa kwenye kernel; profile %d zimewekwa (hali kamili ya kupakiwa inaonekana kwa msimamizi tu)." % len(disk), None)
-    return ("aa", "AppArmor (kufungia programu)", "bad", "Haijawashwa (kernel=%s, huduma=%s)." % ("ndiyo" if on else "hapana", act or "?"), None)
+    prof = [l for l in read(profpath).split("\n") if l.strip()]
+    disk = [f for f in glob.glob(p("/etc/apparmor.d/*")) if os.path.isfile(f) and not f.endswith((".dpkg-new", ".dpkg-old", ".dpkg-dist"))]
+    return {"euid": os.geteuid(), "on": read("/sys/module/apparmor/parameters/enabled") == "Y", "act": act or "?",
+            "prof": len(prof), "readable": os.access(p(profpath), os.R_OK), "disk": len(disk), "pkg": pkg_installed("apparmor")}
+
+
+def aa_decide(f):
+    """Inarudisha (hali, maelezo). 'loaded'/'active' = tumethibitisha; 'userview' = mtumiaji wa kawaida hawezi kusoma orodha ya kernel."""
+    if f["on"] and f["act"] != "active" and f["prof"]:
+        return "ok", "Imewashwa: profile %d zimepakiwa kwenye kernel." % f["prof"], "loaded"
+    if f["on"] and f["act"] == "active":
+        return "ok", "Imewashwa: programu zimefungwa kwenye mipaka yake.", "active"
+    # v19.2.5: /sys/kernel/security ni ya root pekee (0700): mtumiaji wa kawaida hawezi kusoma orodha ya profile za kernel, na huduma ya 'apparmor' ni
+    # 'inactive' kwenye live ingawa profile zimepakiwa (root anaona zimepakiwa). Hapo si 'bad' (ilikuwa hatari ya uongo). Tunathibitisha tunachoweza kuona:
+    # kernel imewashwa na AppArmor imewekwa (kifurushi 'apparmor' au profile kwenye diski). Root bado anapimwa kikamilifu hapo juu.
+    if f["on"] and f["euid"] != 0 and not f["readable"] and (f["disk"] > 0 or f["pkg"]):
+        return "ok", "Imewashwa kwenye kernel na AppArmor imewekwa (idadi ya profile zilizopakiwa inaonekana kwa msimamizi tu).", "userview"
+    return "bad", "Haijawashwa (kernel=%s, huduma=%s)." % ("ndiyo" if f["on"] else "hapana", f["act"]), "bad"
+
+
+def check_apparmor():
+    status, text, _ = aa_decide(aa_facts())
+    return ("aa", "AppArmor (kufungia programu)", status, text, None)
+
+
+def cmd_aa_debug():
+    f = aa_facts()
+    status, _, why = aa_decide(f)
+    print("AA-DEBUG euid=%d on=%d act=%s prof=%d readable=%d disk=%d pkg=%d decision=%s via=%s" % (
+        f["euid"], f["on"], f["act"], f["prof"], f["readable"], f["disk"], f["pkg"], status, why))
+    return 0 if status == "ok" else 1
 
 
 def check_sysctl():
@@ -231,6 +251,8 @@ def do_action(code):
 def main(argv):
     if "--check" in argv:
         return cmd_check()
+    if "--aa-debug" in argv:
+        return cmd_aa_debug()
     smoke = "--smoke" in argv
     try:
         import gi

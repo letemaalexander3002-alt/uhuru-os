@@ -166,7 +166,8 @@ else
     # Ripoti za P9 za mwanzo (kabla ya session ya mtumiaji) zina 'uprot=none': hazihesabiwi; tunaangalia zile zenye matokeo halisi ya uhuru-protect ('uprot=PROTECT-...')
     if p9 'uprot=PROTECT-'; then
         if p9 'uprot=PROTECT-OK,[^ ]*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari yoyote ($(printf '%s\n' "$P9" | grep -o 'uprot=PROTECT-[^ ]*' | tail -n 1 | cut -c1-60))"
-        else fail "awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi ($(printf '%s\n' "$P9" | grep -o 'uprot=PROTECT-[^ ]*' | tail -n 1 | cut -c1-200))"; fi
+        else fail "awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi ($(printf '%s\n' "$P9" | grep -o 'uprot=PROTECT-[^ ]*' | tail -n 1 | cut -c1-200)) [$(printf '%s\n' "$P9" | grep -o 'uaa=AA-DEBUG[^ ]*' | tail -n 1 | cut -c1-160)]"; fi
+        echo "CHECK INFO: e2e: awamu ya 9: ukweli wa AppArmor kwa mtumiaji: $(printf '%s\n' "$P9" | grep -o 'uaa=AA-DEBUG[^ ]*' | tail -n 1 | cut -c1-160)"
     elif p9 'uprot='; then
         echo "CHECK INFO: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida haikupimwa (hakuna session ya mtumiaji wakati P9 ilipoendeshwa)"
     fi
