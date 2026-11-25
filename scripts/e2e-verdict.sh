@@ -163,9 +163,12 @@ else
     if p9 'gui=SMOKE-OK'; then echo "CHECK PASS: e2e: awamu ya 9: dirisha la Kituo cha Ulinzi linajengwa ndani ya session"; else fail "awamu ya 9: Kituo cha Ulinzi hakifunguki ndani ya session ($(printf '%s\n' "$P9" | grep -o 'gui=[^ ]*' | sort -u | tr '\n' ' '))"; fi
     echo "CHECK INFO: e2e: awamu ya 9: $(printf '%s\n' "$P9" | grep -o 'protect=[^ ]*' | tail -n 1)"
     # v19.2.3: Kituo cha Ulinzi kama mtumiaji wa kawaida (kile Karibu Uhuru na mtumiaji wanachokiona), si root peke yake
-    if p9 'uprot='; then
-        if p9 'uprot=PROTECT-OK,[^ ]*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari yoyote ($(printf '%s\n' "$P9" | grep -o 'uprot=[^ ]*' | tail -n 1 | cut -c1-60))"
-        else fail "awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi ($(printf '%s\n' "$P9" | grep -o 'uprot=[^ ]*' | sort -u | tail -n 1 | cut -c1-200))"; fi
+    # Ripoti za P9 za mwanzo (kabla ya session ya mtumiaji) zina 'uprot=none': hazihesabiwi; tunaangalia zile zenye matokeo halisi ya uhuru-protect ('uprot=PROTECT-...')
+    if p9 'uprot=PROTECT-'; then
+        if p9 'uprot=PROTECT-OK,[^ ]*,bad=0,'; then echo "CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari yoyote ($(printf '%s\n' "$P9" | grep -o 'uprot=PROTECT-[^ ]*' | tail -n 1 | cut -c1-60))"
+        else fail "awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi ($(printf '%s\n' "$P9" | grep -o 'uprot=PROTECT-[^ ]*' | tail -n 1 | cut -c1-200))"; fi
+    elif p9 'uprot='; then
+        echo "CHECK INFO: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida haikupimwa (hakuna session ya mtumiaji wakati P9 ilipoendeshwa)"
     fi
 fi
 # ---- Karibu Uhuru (v19.2.1): madirisha yote 8 yameonekana kwenye desktop halisi na kupigwa picha (25..32) ----

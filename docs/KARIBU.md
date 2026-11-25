@@ -61,3 +61,10 @@ Hiyo ya mwisho ni **nadharia** (kosa linataja `/run/user/104/at-spi/bus_0`, waka
   Sasa, bila ruhusa ya kusoma na kukiwa na kernel iliyowashwa na profile zilizopo kwenye diski, kipengele ni `ok` chenye maelezo kwamba hali kamili ya kupakiwa inaonekana kwa msimamizi tu. Kernel ikizimwa, au profile zikikosekana kwenye diski, bado ni `bad`. Tabia ya root na ya huduma `active` haijabadilika.
 - **CI sasa inaona kile anachokiona mtumiaji:** telemetry P9 inaongeza `uprot=` (`uhuru-protect --check` kama mtumiaji wa kawaida), na `e2e-verdict.sh` inaikagua (FAIL kama `bad>0`). Regex za P9 pia zimebanwa zisivuke mipaka ya sehemu (zamani `.*` ingeweza kupita kwa sababu ya sehemu nyingine ya mstari).
 - **`postcheck`:** onyo la AT-SPI sasa linahesabu makosa halisi ("Couldn't connect to accessibility bus"), si mistari ya kawaida ya journal ya `org.a11y.Bus`.
+
+## Marekebisho ya v19.2.4 (CI ya v19.2.3 ilikataa kwa haki)
+Ukaguzi mpya wa mtumiaji wa kawaida (`uprot=`) ulishindwa kwenye CI ya v19.2.3: `aa=bad` bado ilionekana kwa `tester`. Chanzo: marekebisho ya v19.2.3 yalidhani faili
+`/sys/kernel/security/apparmor/profiles` lipo lakini halisomeki. Kwa kweli folda `/sys/kernel/security` ni 0700 ya root, kwa hiyo mtumiaji wa kawaida hawezi hata kuona faili,
+`os.path.exists()` inarudisha `False`, na tawi la marekebisho likarukwa. Jaribio la v19.2.3 lilifanya mfano usio sahihi (faili lipo ila halisomeki), kwa hiyo lilipita.
+Sasa fallback inatumika kwa mtumiaji asiye root (`os.geteuid() != 0`) ambaye hawezi kusoma faili (kwa sababu yoyote), kukiwa na kernel iliyowashwa na profile kwenye diski; root bila faili bado ni `bad`.
+Hukumu pia imerekebishwa: P9 za mwanzo (`uprot=none`, kabla ya session ya mtumiaji) hazihesabiwi, na ujumbe wa FAIL unaonyesha matokeo halisi ya `uhuru-protect`.

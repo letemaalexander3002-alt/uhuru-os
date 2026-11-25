@@ -16,6 +16,7 @@ on:
       - "scripts/v192-postcheck.sh"
       - "scripts/v1921-postcheck.sh"
       - "scripts/v1923-postcheck.sh"
+      - "scripts/v1924-postcheck.sh"
       - "scripts/protect-selftest.sh"
       - "config/includes.chroot/usr/local/bin/uhuru-protect"
       - "scripts/boot-screens.sh"

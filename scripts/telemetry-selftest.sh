@@ -58,6 +58,13 @@ vrun "$BADP" "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: AppArmor, kernel'; [
 ROOTW='PROTECT-OK,n=10,ok=6,warn=2,info=2,bad=0,fw=warn,aa=ok,sysctl=ok,upd=ok,disk=info'
 vrun "$ROOTW" "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: AppArmor, kernel'; [ $? -ne 0 ]; check "P9: fw=warn ya root haifichwi na fw=ok ya uprot (regex haivuki mipaka ya sehemu)" $?
 
+# kama CI halisi: P9 za mwanzo zina 'uprot=none' (hakuna session ya mtumiaji), ya mwisho ina matokeo
+vmix() { mkdir -p "$T/p9"; printf 'QEMU accel: kvm\nE2E telemetry=ok\n' > "$T/p9/e2e.log"; { echo 'UHURU-STATE n=1 x=y'; p9line "$OKP" none; p9line "$OKP" none; [ -n "${1:-}" ] && p9line "$OKP" "$1"; } > "$T/p9/serial.log"; bash "$VERD" "$T/p9" 2>&1; }
+vmix "$BADP" | grep -q 'CHECK FAIL: e2e: awamu ya 9: mtumiaji wa kawaida anaona hatari kwenye Kituo cha Ulinzi (uprot=PROTECT-FAIL,n=10,ok=6,warn=1,info=2,bad=1,fw=ok,aa=bad'; check "P9 mchanganyiko: 'uprot=none' mwanzoni + PROTECT-FAIL baadaye = FAIL yenye matokeo halisi (si 'none')" $?
+vmix "$OKP" | grep -q 'CHECK PASS: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida hakioni hatari'; check "P9 mchanganyiko: 'uprot=none' mwanzoni + PROTECT-OK baadaye = PASS" $?
+vmix "" | grep -q 'CHECK INFO: e2e: awamu ya 9: Kituo cha Ulinzi kwa mtumiaji wa kawaida haikupimwa'; check "P9: uprot=none pekee = INFO (haikupimwa), si FAIL wala PASS ya uongo" $?
+vmix "" | grep -q 'mtumiaji wa kawaida anaona hatari'; [ $? -ne 0 ]; check "P9: uprot=none pekee haileti FAIL" $?
+
 echo "4) telemetry: p9check inaongeza uprot= (mahali sahihi tu)"
 awk '/^p9check\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$TEL" > "$T/p9.sh"
 [ -s "$T/p9.sh" ]; check "p9check() imepatikana" $?
