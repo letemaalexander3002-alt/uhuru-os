@@ -91,6 +91,24 @@ EOPY
     case "$out" in "bad|Haijawashwa"*) check "mtumiaji halisi: bila faili na bila kifurushi -> bado bad (ukaguzi haujalegezwa)" 0 ;; *) check "mtumiaji halisi bila faili/pkg (imepatikana: $out)" 1 ;; esac
     out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody dbg 2>&1 | tail -n 1)
     case "$out" in "AA-DEBUG euid=65534 on=1 act=inactive prof=0 readable=0 disk=0 pkg=1 decision=ok via=userview") check "--aa-debug inaonyesha ukweli wote kwa mtumiaji halisi" 0 ;; *) check "--aa-debug (imepatikana: $out)" 1 ;; esac
+    # HALI HALISI YA CI (v19.2.5): faili linaonekana kusomeka (readable=1) lakini maudhui ni tupu kwa mtumiaji asiye root; kifurushi kimewekwa, diski haina faili
+    chmod 755 "$RT/sys/kernel/security" "$RT/sys/kernel/security/apparmor"; : > "$RT/sys/kernel/security/apparmor/profiles"; chmod 444 "$RT/sys/kernel/security/apparmor/profiles"
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody dbg 2>&1 | tail -n 1)
+    case "$out" in "AA-DEBUG euid=65534 on=1 act=inactive prof=0 readable=1 disk=0 pkg=1 decision=ok via=userview") check "HALI YA CI: readable=1 + orodha tupu + kifurushi -> ok (v19.2.5 ilitoa bad hapa)" 0 ;; *) check "readable=1 + orodha tupu (imepatikana: $out)" 1 ;; esac
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody nopkg 2>&1 | tail -n 1)
+    case "$out" in "bad|Haijawashwa"*) check "readable=1 + orodha tupu + bila kifurushi na bila diski -> bado bad" 0 ;; *) check "readable=1 bila pkg/diski (imepatikana: $out)" 1 ;; esac
+    for f in usr.sbin.cupsd usr.bin.man; do : > "$RT/etc/apparmor.d/$f"; chmod 644 "$RT/etc/apparmor.d/$f"; done
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody nopkg 2>&1 | tail -n 1)
+    case "$out" in "ok|Imewashwa kwenye kernel na AppArmor imewekwa"*) check "readable=1 + orodha tupu + profile kwenye diski (bila kifurushi) -> ok" 0 ;; *) check "readable=1 + diski (imepatikana: $out)" 1 ;; esac
+    # mtumiaji asiye root akiweza kuona profile halisi: njia ya 'loaded' (haitegemei fallback)
+    printf 'usr.sbin.cupsd (enforce)\nusr.bin.man (enforce)\n' > "$RT/sys/kernel/security/apparmor/profiles"
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" nobody dbg 2>&1 | tail -n 1)
+    case "$out" in "AA-DEBUG euid=65534 on=1 act=inactive prof=2 readable=1 disk=2 pkg=1 decision=ok via=loaded") check "asiye root anayeona profile 2 -> ok kwa njia ya 'loaded'" 0 ;; *) check "asiye root anaona profile (imepatikana: $out)" 1 ;; esac
+    # root yenye orodha tupu na huduma inactive: BADO bad (fallback si ya root)
+    : > "$RT/sys/kernel/security/apparmor/profiles"
+    out=$(python3 "$T/real.py" "$T/prot.py" "$RT" root 2>&1 | tail -n 1)
+    case "$out" in "bad|Haijawashwa"*) check "root yenye orodha tupu na huduma inactive -> bad (ukaguzi wa root haujalegezwa)" 0 ;; *) check "root orodha tupu (imepatikana: $out)" 1 ;; esac
+    printf 'usr.sbin.cupsd (enforce)\n' > "$RT/sys/kernel/security/apparmor/profiles"   # rudisha maudhui kwa jaribio la root linalofuata
     out=$(python3 "$T/real.py" "$T/prot.py" "$RT" root 2>&1 | tail -n 1)
     case "$out" in "ok|Imewashwa: profile 1 zimepakiwa"*) check "root halisi: profile zinasomeka -> ok (njia ya zamani)" 0 ;; *) check "root halisi (imepatikana: $out)" 1 ;; esac
 else

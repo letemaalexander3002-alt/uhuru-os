@@ -99,7 +99,11 @@ def aa_decide(f):
     # v19.2.5: /sys/kernel/security ni ya root pekee (0700): mtumiaji wa kawaida hawezi kusoma orodha ya profile za kernel, na huduma ya 'apparmor' ni
     # 'inactive' kwenye live ingawa profile zimepakiwa (root anaona zimepakiwa). Hapo si 'bad' (ilikuwa hatari ya uongo). Tunathibitisha tunachoweza kuona:
     # kernel imewashwa na AppArmor imewekwa (kifurushi 'apparmor' au profile kwenye diski). Root bado anapimwa kikamilifu hapo juu.
-    if f["on"] and f["euid"] != 0 and not f["readable"] and (f["disk"] > 0 or f["pkg"]):
+    # v19.2.6: mtumiaji asiye root haoni profile zozote za kernel (orodha inakuja TUPU: prof=0), na huduma ya 'apparmor' ni 'inactive' kwenye live ingawa root anaona
+    # profile zimepakiwa. Hapo si 'bad' (ilikuwa hatari ya uongo). USITEGEMEE 'readable': kwenye ISO halisi os.access() inarudisha kweli (readable=1) lakini maudhui ni tupu
+    # (v19.2.4/5 zilitegemea readable=0 na zilishindwa kwenye CI). Tunathibitisha tunachoweza kuona: kernel imewashwa na AppArmor imewekwa (kifurushi AU profile kwenye diski).
+    # Root bado anapimwa kikamilifu hapo juu: orodha tupu kwa root ni 'bad'.
+    if f["on"] and f["euid"] != 0 and f["prof"] == 0 and (f["disk"] > 0 or f["pkg"]):
         return "ok", "Imewashwa kwenye kernel na AppArmor imewekwa (idadi ya profile zilizopakiwa inaonekana kwa msimamizi tu).", "userview"
     return "bad", "Haijawashwa (kernel=%s, huduma=%s)." % ("ndiyo" if f["on"] else "hapana", f["act"]), "bad"
 

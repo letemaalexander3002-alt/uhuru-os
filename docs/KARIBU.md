@@ -76,3 +76,9 @@ kama kernel imewashwa na AppArmor imewekwa (kifurushi `apparmor` AU profile kwen
 `uhuru-protect --aa-debug` inachapisha ukweli wote (`AA-DEBUG euid=.. on=.. act=.. prof=.. readable=.. disk=.. pkg=.. decision=.. via=..`), na telemetry P9 inaubeba kama `uaa=`:
 CI inaonyesha sasa KWA NINI uamuzi ni ok/bad kwa mtumiaji halisi, si kubahatisha. Majaribio yanatumia ruhusa halisi za mfumo wa faili (mtumiaji `nobody`, `/sys/kernel/security` 0700).
 Maoni ya harness: picha 23/24 za CI ya v19.2.4 zinaonyesha herufi zilizodondoka kwenye amri zilizotumwa kwa QEMU ("uhuinstaller", "huru-protect"); hiyo ni tatizo la zamani la kutuma funguo, si la Karibu.
+
+## Marekebisho ya v19.2.6 (ukweli halisi kutoka `uaa=` ya CI ya v19.2.5)
+`uaa=AA-DEBUG,euid=1001,on=1,act=inactive,prof=0,readable=1,disk=13,pkg=1,decision=bad`. Kwa mtumiaji wa kawaida (`tester`) faili la profile za kernel LINAONEKANA kusomeka
+(`readable=1`) lakini maudhui ni tupu (`prof=0`), wakati root anaona profile 23 zimepakiwa. v19.2.4 na v19.2.5 ziliweka fallback pale `readable=0` tu, kwa hiyo hazikufanya kazi:
+dhana yetu ya "halisomeki" haikuwa kweli. Sasa fallback inategemea kile mtumiaji anachoweza kuona kweli: orodha tupu (`prof=0`) kwa asiye root, kukiwa na kernel iliyowashwa na AppArmor
+imewekwa (kifurushi AU profile kwenye diski). Root yenye orodha tupu na huduma `inactive` bado ni `bad`. Majaribio sasa yanajumuisha hali halisi ya CI (readable=1 + orodha tupu).
